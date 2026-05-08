@@ -65,6 +65,9 @@ inline const std::vector<SettingInfo>& getSettingsList() {
                             "extraParagraphSpacing", StrId::STR_CAT_READER),
         SettingInfo::Toggle(StrId::STR_TEXT_AA, &CrossPointSettings::textAntiAliasing, "textAntiAliasing",
                             StrId::STR_CAT_READER),
+        SettingInfo::Enum(StrId::STR_READER_DISPLAY_MODE, &CrossPointSettings::readerDisplayMode,
+                          {StrId::STR_DISPLAY_QUALITY, StrId::STR_DISPLAY_STANDARD, StrId::STR_DISPLAY_FAST},
+                          "readerDisplayMode", StrId::STR_CAT_READER),
         SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
                           "imageRendering", StrId::STR_CAT_READER),
@@ -75,9 +78,6 @@ inline const std::vector<SettingInfo>& getSettingsList() {
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-                          {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH},
-                          "shortPwrBtn", StrId::STR_CAT_CONTROLS),
         // --- System ---
         SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                           {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30},
@@ -134,9 +134,9 @@ inline const std::vector<SettingInfo>& getSettingsList() {
     };
     // Only show tilt page turn setting when a tilt sensor is available.
     if (halTiltSensor.isAvailable()) {
-      // Insert after the short power button setting (end of Controls section)
+      // Insert after the long-press behavior setting (end of Controls section)
       for (auto it = v.begin(); it != v.end(); ++it) {
-        if (it->nameId == StrId::STR_SHORT_PWR_BTN) {
+        if (it->nameId == StrId::STR_LONG_PRESS_BEHAVIOR) {
           v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
                                              {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED},
                                              "tiltPageTurn", StrId::STR_CAT_CONTROLS));

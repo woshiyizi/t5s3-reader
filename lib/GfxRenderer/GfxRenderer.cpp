@@ -919,11 +919,20 @@ void GfxRenderer::invertScreen() const {
 void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
-  display.displayBuffer(refreshMode, fadingFix);
+  display.displayBuffer(refreshMode);
 }
 
 void GfxRenderer::requestNextRefresh(const HalDisplay::RefreshMode refreshMode) const {
   display.requestNextRefresh(refreshMode);
+}
+
+void GfxRenderer::requestNextDisplayEffect(const HalDisplay::DisplayEffect effect) const {
+  display.requestNextDisplayEffect(effect);
+}
+
+void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
+  display.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_STANDARD
+                                                 : HalDisplay::EFFECT_READER_TURN_BACKWARD_STANDARD);
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
@@ -1199,7 +1208,9 @@ void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuff
 
 bool GfxRenderer::captureGrayscaleBaseBuffer() const { return display.captureGrayscaleBaseBuffer(frameBuffer); }
 
-void GfxRenderer::displayGrayBuffer() const { display.displayGrayBuffer(fadingFix); }
+void GfxRenderer::displayGrayBuffer(const HalDisplay::RefreshMode refreshMode) const {
+  display.displayGrayBuffer(refreshMode);
+}
 
 void GfxRenderer::freeBwBufferChunks() {
   for (auto& bwBufferChunk : bwBufferChunks) {

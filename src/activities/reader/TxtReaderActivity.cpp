@@ -78,10 +78,12 @@ void TxtReaderActivity::loop() {
 
   if (prevTriggered && currentPage > 0) {
     currentPage--;
+    ReaderUtils::requestPageTurnEffect(renderer, false);
     requestUpdate();
   } else if (nextTriggered) {
     if (currentPage < totalPages - 1) {
       currentPage++;
+      ReaderUtils::requestPageTurnEffect(renderer, true);
       requestUpdate();
     } else {
       onGoHome();
@@ -94,6 +96,7 @@ bool TxtReaderActivity::onTouchTap(int16_t x, int16_t) {
   if (x < width / 3) {
     if (currentPage > 0) {
       currentPage--;
+      ReaderUtils::requestPageTurnEffect(renderer, false);
       requestUpdate();
     }
     return true;
@@ -102,6 +105,7 @@ bool TxtReaderActivity::onTouchTap(int16_t x, int16_t) {
   if (x > (width * 2) / 3) {
     if (currentPage < totalPages - 1) {
       currentPage++;
+      ReaderUtils::requestPageTurnEffect(renderer, true);
       requestUpdate();
     } else {
       onGoHome();

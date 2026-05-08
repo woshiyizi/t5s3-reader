@@ -125,6 +125,13 @@ class CrossPointSettings {
     REFRESH_FREQUENCY_COUNT
   };
 
+  enum READER_DISPLAY_MODE {
+    READER_DISPLAY_QUALITY = 0,
+    READER_DISPLAY_STANDARD = 1,
+    READER_DISPLAY_FAST = 2,
+    READER_DISPLAY_MODE_COUNT
+  };
+
   // Short power button press actions
   enum SHORT_PWRBTN { IGNORE = 0, SLEEP = 1, PAGE_TURN = 2, FORCE_REFRESH = 3, SHORT_PWRBTN_COUNT };
 
@@ -187,6 +194,8 @@ class CrossPointSettings {
   uint8_t sleepTimeout = SLEEP_10_MIN;
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
+  // Reader-only display mode: quality, standard, or fast.
+  uint8_t readerDisplayMode = READER_DISPLAY_STANDARD;
   uint8_t hyphenationEnabled = 0;
 
   // Reader screen margin settings

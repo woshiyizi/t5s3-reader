@@ -7,6 +7,9 @@ class T5S3M5GfxDisplay;
 namespace lgfx {
 inline namespace v1 {
 class LGFX_Sprite;
+namespace epd_mode {
+enum epd_mode_t : uint8_t;
+}
 }
 }  // namespace lgfx
 
@@ -23,6 +26,14 @@ class HalDisplay {
     FULL_REFRESH,  // Full refresh with complete waveform
     HALF_REFRESH,  // Half refresh (1720ms) - balanced quality and speed
     FAST_REFRESH   // Fast refresh using custom LUT
+  };
+
+  enum DisplayEffect {
+    EFFECT_NONE,
+    EFFECT_READER_TURN_FORWARD_STANDARD,
+    EFFECT_READER_TURN_BACKWARD_STANDARD,
+    EFFECT_READER_TURN_FORWARD_FAST,
+    EFFECT_READER_TURN_BACKWARD_FAST
   };
 
   // Initialize the display hardware and driver
@@ -48,6 +59,7 @@ class HalDisplay {
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
   void requestNextRefresh(RefreshMode mode = RefreshMode::HALF_REFRESH);
+  void requestNextDisplayEffect(DisplayEffect effect = DisplayEffect::EFFECT_NONE);
 
   // Power management
   void deepSleep();
@@ -61,7 +73,7 @@ class HalDisplay {
   bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
 
-  void displayGrayBuffer(bool turnOffScreen = false);
+  void displayGrayBuffer(RefreshMode mode = RefreshMode::HALF_REFRESH);
 
   // Runtime geometry passthrough
   uint16_t getDisplayWidth() const;
@@ -83,11 +95,14 @@ class HalDisplay {
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
   RefreshMode forcedRefreshMode = RefreshMode::HALF_REFRESH;
+  DisplayEffect pendingDisplayEffect = DisplayEffect::EFFECT_NONE;
   uint32_t refreshCycleCount = 0;
 
   uint8_t* allocatePlane();
   void releaseBackend();
   bool initializePanelCanvas();
+  void pushPanelCanvas(RefreshMode mode, lgfx::epd_mode::epd_mode_t epdMode);
+  void pushPanelCanvasWithEffect(DisplayEffect effect) const;
   void renderBwToPanelCanvas() const;
   void renderGrayToPanelCanvas() const;
 };

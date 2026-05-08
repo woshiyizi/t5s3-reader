@@ -554,6 +554,7 @@ void EpubReaderActivity::pageTurn(bool isForwardTurn) {
       }
     }
   }
+  ReaderUtils::requestPageTurnEffect(renderer, isForwardTurn);
   lastPageTurnTime = millis();
   requestUpdate();
 }
@@ -825,11 +826,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     renderer.copyGrayscaleMsbBuffers();
     const auto tGrayMsb = millis();
 
-    renderer.displayGrayBuffer();
+    renderer.displayGrayBuffer(ReaderUtils::takeReaderRefreshMode(pagesUntilFullRefresh));
     const auto tGrayDisplay = millis();
     renderer.setRenderMode(GfxRenderer::BW);
     fcm->logStats("gray");
-    ReaderUtils::markRefreshCycleDisplayed(pagesUntilFullRefresh);
 
     const auto tEnd = millis();
     LOG_DBG("ERS",
@@ -883,7 +883,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const auto tGrayMsb = millis();
 
     // display grayscale part
-    renderer.displayGrayBuffer();
+    renderer.displayGrayBuffer(ReaderUtils::takeReaderRefreshMode(pagesUntilFullRefresh));
     const auto tGrayDisplay = millis();
     renderer.setRenderMode(GfxRenderer::BW);
     fcm->logStats("gray");

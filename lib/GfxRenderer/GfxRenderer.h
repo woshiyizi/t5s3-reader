@@ -88,6 +88,8 @@ class GfxRenderer {
   int getScreenHeight() const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
   void requestNextRefresh(HalDisplay::RefreshMode refreshMode = HalDisplay::HALF_REFRESH) const;
+  void requestNextDisplayEffect(HalDisplay::DisplayEffect effect) const;
+  void requestNextPageTurnEffect(bool isForwardTurn) const;
   // EXPERIMENTAL: Windowed update - display only a rectangular region
   // void displayWindow(int x, int y, int width, int height) const;
   void invertScreen() const;
@@ -152,7 +154,7 @@ class GfxRenderer {
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
   bool captureGrayscaleBaseBuffer() const;
-  void displayGrayBuffer() const;
+  void displayGrayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::HALF_REFRESH) const;
   bool storeBwBuffer();    // Returns true if buffer was stored successfully
   void restoreBwBuffer();  // Restore and free the stored buffer
   void cleanupGrayscaleWithFrameBuffer() const;

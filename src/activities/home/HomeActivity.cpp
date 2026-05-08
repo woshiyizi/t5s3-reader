@@ -51,6 +51,25 @@ void HomeActivity::loadRecentBooks(int maxBooks) {
   }
 }
 
+bool HomeActivity::needsRecentCovers(int coverHeight) const {
+  for (const RecentBook& book : recentBooks) {
+    if (book.coverBmpPath.empty()) {
+      continue;
+    }
+
+    const std::string coverPath = UITheme::getCoverThumbPath(book.coverBmpPath, coverHeight);
+    if (Storage.exists(coverPath.c_str())) {
+      continue;
+    }
+
+    if (FsHelpers::hasEpubExtension(book.path) || FsHelpers::hasXtcExtension(book.path)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void HomeActivity::loadRecentCovers(int coverHeight) {
   recentsLoading = true;
   bool showingLoading = false;
@@ -114,9 +133,14 @@ void HomeActivity::onEnter() {
   hasOpdsServers = OPDS_STORE.hasServers();
 
   selectorIndex = 0;
+  recentsLoading = false;
+  firstRenderDone = false;
+  coverRendered = false;
+  coverBufferStored = false;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
+  recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
 
   // Trigger first update
   requestUpdate();
@@ -268,7 +292,9 @@ void HomeActivity::render(RenderLock&&) {
 
   if (!firstRenderDone) {
     firstRenderDone = true;
-    requestUpdate();
+    if (!recentsLoaded) {
+      requestUpdate();
+    }
   } else if (!recentsLoaded && !recentsLoading) {
     recentsLoading = true;
     loadRecentCovers(metrics.homeCoverHeight);

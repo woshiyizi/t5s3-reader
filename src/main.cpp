@@ -128,6 +128,7 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
 unsigned long t2 = 0;
+constexpr unsigned long kConfirmPowerOffHoldMs = 2000;
 
 // Verify power button press duration on wake-up from deep sleep
 // Pre-condition: isWakeupByPowerButton() == true
@@ -282,9 +283,8 @@ void setup() {
   const auto wakeupReason = gpio.getWakeupReason();
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
-      LOG_DBG("MAIN", "Verifying power button press duration");
-      gpio.verifyPowerButtonWakeup(SETTINGS.getPowerButtonDuration(),
-                                   SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
+      LOG_DBG("MAIN", "Verifying power button wakeup");
+      gpio.verifyPowerButtonWakeup(10, true);
       break;
     case HalGPIO::WakeupReason::Touch:
       LOG_DBG("MAIN", "Wakeup reason: Touch");
@@ -414,13 +414,23 @@ void loop() {
     screenshotButtonsReleased = true;
   }
 
-  // const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  // if (millis() - lastActivityTime >= sleepTimeoutMs) {
-  //   LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
-  //   enterDeepSleep();
-  //   // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
-  //   return;
-  // }
+  static bool confirmPowerOffHandled = false;
+  if (!gpio.isPressed(HalGPIO::BTN_CONFIRM)) {
+    confirmPowerOffHandled = false;
+  } else if (!confirmPowerOffHandled && gpio.getHeldTime() >= kConfirmPowerOffHoldMs) {
+    LOG_DBG("MAIN", "Front button long press power-off request");
+    confirmPowerOffHandled = true;
+    enterDeepSleep();
+    return;
+  }
+
+  const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
+  if (millis() - lastActivityTime >= sleepTimeoutMs) {
+    LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
+    enterDeepSleep();
+    // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
+    return;
+  }
 
   // if (millis() > 5000 && gpio.isPressed(HalGPIO::BTN_POWER) &&
   //     gpio.getHeldTime() > SETTINGS.getPowerButtonDuration()) {
@@ -434,12 +444,10 @@ void loop() {
   //   return;
   // }
 
-  // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
-      mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
-    LOG_DBG("MAIN", "Manual screen refresh triggered");
-    RenderLock lock;
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power) && !gpio.wasReleased(HalGPIO::BTN_DOWN)) {
+    LOG_DBG("MAIN", "Power button short press sleep request");
+    enterDeepSleep();
+    return;
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.

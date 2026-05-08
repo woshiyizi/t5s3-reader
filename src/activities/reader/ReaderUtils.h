@@ -44,31 +44,61 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
                                              input.wasPressed(MappedInputManager::Button::Left))
                                           : (input.wasReleased(MappedInputManager::Button::PageBack) ||
                                              input.wasReleased(MappedInputManager::Button::Left)));
-  const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
-                         input.wasReleased(MappedInputManager::Button::Power);
-  const bool next = tiltNext || (usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) || powerTurn ||
+  const bool next = tiltNext || (usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) ||
                                              input.wasPressed(MappedInputManager::Button::Right))
-                                          : (input.wasReleased(MappedInputManager::Button::PageForward) || powerTurn ||
+                                          : (input.wasReleased(MappedInputManager::Button::PageForward) ||
                                              input.wasReleased(MappedInputManager::Button::Right)));
   return {prev, next, tiltPrev || tiltNext};
 }
 
-inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
-  if (pagesUntilFullRefresh <= 1) {
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-  } else {
-    renderer.displayBuffer();
-    pagesUntilFullRefresh--;
+inline HalDisplay::RefreshMode getReaderDisplayRefreshMode() {
+  switch (SETTINGS.readerDisplayMode) {
+    case CrossPointSettings::READER_DISPLAY_FAST:
+    case CrossPointSettings::READER_DISPLAY_STANDARD:
+      return HalDisplay::FAST_REFRESH;
+    case CrossPointSettings::READER_DISPLAY_QUALITY:
+    default:
+      return HalDisplay::HALF_REFRESH;
   }
 }
 
-inline void markRefreshCycleDisplayed(int& pagesUntilFullRefresh) {
+inline bool shouldAnimatePageTurn() {
+  return SETTINGS.readerDisplayMode != CrossPointSettings::READER_DISPLAY_QUALITY;
+}
+
+inline void requestPageTurnEffect(const GfxRenderer& renderer, const bool isForwardTurn) {
+  switch (SETTINGS.readerDisplayMode) {
+    case CrossPointSettings::READER_DISPLAY_FAST:
+      renderer.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_FAST
+                                                      : HalDisplay::EFFECT_READER_TURN_BACKWARD_FAST);
+      return;
+    case CrossPointSettings::READER_DISPLAY_STANDARD:
+      renderer.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_STANDARD
+                                                      : HalDisplay::EFFECT_READER_TURN_BACKWARD_STANDARD);
+      return;
+    case CrossPointSettings::READER_DISPLAY_QUALITY:
+    default:
+      renderer.requestNextDisplayEffect(HalDisplay::EFFECT_NONE);
+      return;
+  }
+}
+
+inline HalDisplay::RefreshMode takeReaderRefreshMode(int& pagesUntilFullRefresh) {
   if (pagesUntilFullRefresh <= 1) {
     pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-  } else {
-    pagesUntilFullRefresh--;
+    return HalDisplay::FULL_REFRESH;
   }
+
+  pagesUntilFullRefresh--;
+  return getReaderDisplayRefreshMode();
+}
+
+inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntilFullRefresh) {
+  renderer.displayBuffer(takeReaderRefreshMode(pagesUntilFullRefresh));
+}
+
+inline void markRefreshCycleDisplayed(int& pagesUntilFullRefresh) {
+  (void)takeReaderRefreshMode(pagesUntilFullRefresh);
 }
 
 // Grayscale anti-aliasing pass. The caller renders the BW page first,
@@ -94,9 +124,8 @@ void renderAntiAliased(GfxRenderer& renderer, int& pagesUntilFullRefresh, Render
   renderFn();
   renderer.copyGrayscaleMsbBuffers();
 
-  renderer.displayGrayBuffer();
+  renderer.displayGrayBuffer(takeReaderRefreshMode(pagesUntilFullRefresh));
   renderer.setRenderMode(GfxRenderer::BW);
-  markRefreshCycleDisplayed(pagesUntilFullRefresh);
 }
 
 }  // namespace ReaderUtils

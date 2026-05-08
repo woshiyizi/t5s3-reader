@@ -10,13 +10,13 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
-#include <HalTiltSensor.h>
 #include <I18n.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "ReaderUtils.h"
 #include "XtcReaderChapterSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -73,22 +73,7 @@ void XtcReaderActivity::loop() {
     return;
   }
 
-  // When long-press chapter skip is disabled, turn pages on press instead of release.
-  const bool usePressForPageTurn = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
-  const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
-  const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
-  const bool prevTriggered =
-      tiltPrev || (usePressForPageTurn ? (mappedInput.wasPressed(MappedInputManager::Button::PageBack) ||
-                                          mappedInput.wasPressed(MappedInputManager::Button::Left))
-                                       : (mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
-                                          mappedInput.wasReleased(MappedInputManager::Button::Left)));
-  const bool powerPageTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
-                             mappedInput.wasReleased(MappedInputManager::Button::Power);
-  const bool nextTriggered =
-      tiltNext || (usePressForPageTurn ? (mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
-                                          powerPageTurn || mappedInput.wasPressed(MappedInputManager::Button::Right))
-                                       : (mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
-                                          powerPageTurn || mappedInput.wasReleased(MappedInputManager::Button::Right)));
+  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
 
   if (!prevTriggered && !nextTriggered) {
     return;
@@ -105,7 +90,6 @@ void XtcReaderActivity::loop() {
     return;
   }
 
-  const bool fromTilt = tiltPrev || tiltNext;
   const bool skipPages =
       !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && mappedInput.getHeldTime() > skipPageMs;
   const int skipAmount = skipPages ? 10 : 1;
@@ -116,12 +100,14 @@ void XtcReaderActivity::loop() {
     } else {
       currentPage = 0;
     }
+    ReaderUtils::requestPageTurnEffect(renderer, false);
     requestUpdate();
   } else if (nextTriggered) {
     currentPage += skipAmount;
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();  // Allow showing "End of book"
     }
+    ReaderUtils::requestPageTurnEffect(renderer, true);
     requestUpdate();
   }
 }
@@ -133,6 +119,7 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
   if (x < width / 3) {
     if (currentPage > 0) {
       currentPage--;
+      ReaderUtils::requestPageTurnEffect(renderer, false);
       requestUpdate();
     }
     return true;
@@ -143,6 +130,7 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();
     }
+    ReaderUtils::requestPageTurnEffect(renderer, true);
     requestUpdate();
     return true;
   }
@@ -250,7 +238,7 @@ void XtcReaderActivity::renderPage() {
     };
 
     // Optimized grayscale rendering without storeBwBuffer (saves 48KB peak memory)
-    // Flow: BW display → LSB/MSB passes → grayscale display → re-render BW for next frame
+    // Flow: capture BW base → LSB/MSB passes → grayscale display → re-render BW for next frame
 
     // Count pixel distribution for debugging
     uint32_t pixelCounts[4] = {0, 0, 0, 0};
@@ -271,13 +259,11 @@ void XtcReaderActivity::renderPage() {
       }
     }
 
-    // Display BW with conditional refresh based on pagesUntilFullRefresh
-    if (pagesUntilFullRefresh <= 1) {
-      renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-      pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-    } else {
-      renderer.displayBuffer();
-      pagesUntilFullRefresh--;
+    if (!renderer.captureGrayscaleBaseBuffer()) {
+      LOG_ERR("XTR", "Failed to capture BW page for grayscale rendering");
+      free(pageBuffer);
+      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+      return;
     }
 
     // Pass 2: LSB buffer - mark DARK gray only (XTH value 1)
@@ -305,8 +291,8 @@ void XtcReaderActivity::renderPage() {
     }
     renderer.copyGrayscaleMsbBuffers();
 
-    // Display grayscale overlay
-    renderer.displayGrayBuffer();
+    // Display the final grayscale page once, instead of flashing a BW pass first.
+    renderer.displayGrayBuffer(ReaderUtils::takeReaderRefreshMode(pagesUntilFullRefresh));
 
     // Pass 4: Re-render BW to framebuffer (restore for next frame, instead of restoreBwBuffer)
     renderer.clearScreen();
@@ -350,14 +336,7 @@ void XtcReaderActivity::renderPage() {
 
   // XTC pages already have status bar pre-rendered, no need to add our own
 
-  // Display with appropriate refresh
-  if (pagesUntilFullRefresh <= 1) {
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
-  } else {
-    renderer.displayBuffer();
-    pagesUntilFullRefresh--;
-  }
+  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
   LOG_DBG("XTR", "Rendered page %lu/%lu (%u-bit)", currentPage + 1, xtc->getPageCount(), bitDepth);
 }

@@ -19,6 +19,9 @@ constexpr uint32_t kEpdBusHz = 16000000;
 constexpr uint32_t kMiddleRefreshThreshold = 8;
 constexpr uint32_t kQualityRefreshThreshold = 18;
 constexpr int kDefaultVcomMv = -1600;
+constexpr int kReaderTurnStandardSliceCount = 32;
+constexpr int kReaderTurnFastSliceCount = 24;
+constexpr int kReaderTurnMinSliceHeight = 8;
 
 constexpr uint8_t kTpsRegEnable = 0x01;
 constexpr uint8_t kTpsRegVcom = 0x03;
@@ -218,6 +221,18 @@ uint8_t grayscaleValueForBit(const uint8_t baseByte, const uint8_t lsbByte, cons
   }
   return kGrayBlack;
 }
+
+lgfx::epd_mode::epd_mode_t epdModeForRefreshMode(const HalDisplay::RefreshMode mode) {
+  switch (mode) {
+    case HalDisplay::FULL_REFRESH:
+      return lgfx::epd_mode::epd_quality;
+    case HalDisplay::HALF_REFRESH:
+      return lgfx::epd_mode::epd_text;
+    case HalDisplay::FAST_REFRESH:
+    default:
+      return lgfx::epd_mode::epd_fast;
+  }
+}
 }  // namespace
 
 class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
@@ -333,8 +348,8 @@ void HalDisplay::begin() {
 
   gfx->setRotation(0);
   gfx->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
-  gfx->setEpdMode(lgfx::epd_mode_t::epd_fastest);
-  gfx->powerSave(true);
+  gfx->setEpdMode(lgfx::epd_mode::epd_fastest);
+  gfx->powerSave(false);
 
   if (!initializePanelCanvas()) {
     LOG_ERR("DSP", "Failed to create M5GFX panel canvas");
@@ -348,6 +363,7 @@ void HalDisplay::begin() {
   displayReady = true;
   forceFullRefresh = true;
   forcedRefreshPending = false;
+  pendingDisplayEffect = EFFECT_NONE;
   refreshCycleCount = 0;
   grayscaleBaseCaptured = false;
 
@@ -462,10 +478,81 @@ void HalDisplay::renderGrayToPanelCanvas() const {
   }
 }
 
+void HalDisplay::pushPanelCanvasWithEffect(const DisplayEffect effect) const {
+  if (!gfx || !panelCanvas) {
+    return;
+  }
+
+  if (!panelCanvas->getBuffer()) {
+    panelCanvas->pushSprite(0, 0);
+    return;
+  }
+
+  int preferredSliceCount = 0;
+  bool reverse = false;
+  switch (effect) {
+    case EFFECT_READER_TURN_FORWARD_STANDARD:
+      preferredSliceCount = kReaderTurnStandardSliceCount;
+      reverse = false;
+      break;
+    case EFFECT_READER_TURN_BACKWARD_STANDARD:
+      preferredSliceCount = kReaderTurnStandardSliceCount;
+      reverse = true;
+      break;
+    case EFFECT_READER_TURN_FORWARD_FAST:
+      preferredSliceCount = kReaderTurnFastSliceCount;
+      reverse = false;
+      break;
+    case EFFECT_READER_TURN_BACKWARD_FAST:
+      preferredSliceCount = kReaderTurnFastSliceCount;
+      reverse = true;
+      break;
+    case EFFECT_NONE:
+    default:
+      panelCanvas->pushSprite(0, 0);
+      return;
+  }
+
+  const int maxSliceCount = std::max(1, DISPLAY_HEIGHT / kReaderTurnMinSliceHeight);
+  const int sliceCount = std::max(1, std::min(preferredSliceCount, maxSliceCount));
+  const int sliceHeight = std::max(1, DISPLAY_HEIGHT / sliceCount);
+
+  // The panel canvas is stored in physical scan orientation (960x540).
+  // Sweeping physical Y from low->high maps to logical right->left in portrait,
+  // which feels like a "next page" reveal. The reverse sweep gives prev page.
+  for (int i = 0; i < sliceCount; ++i) {
+    const int sliceIndex = reverse ? (sliceCount - 1 - i) : i;
+    const int startRow = sliceIndex * sliceHeight;
+    const int currentSliceHeight =
+        (sliceIndex == sliceCount - 1) ? (DISPLAY_HEIGHT - startRow) : std::min(sliceHeight, DISPLAY_HEIGHT - startRow);
+    if (currentSliceHeight <= 0) {
+      continue;
+    }
+
+    gfx->setClipRect(0, startRow, DISPLAY_WIDTH, currentSliceHeight);
+    panelCanvas->pushSprite(gfx, 0, 0);
+  }
+  gfx->clearClipRect();
+}
+
+void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::epd_mode_t epdMode) {
+  gfx->waitDisplay();
+  gfx->setEpdMode(epdMode);
+
+  const DisplayEffect effect = (mode == FULL_REFRESH) ? EFFECT_NONE : pendingDisplayEffect;
+  if (effect == EFFECT_NONE) {
+    panelCanvas->pushSprite(0, 0);
+  } else {
+    pushPanelCanvasWithEffect(effect);
+  }
+  gfx->waitDisplay();
+}
+
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
   if (!displayReady || !gfx || !panelCanvas) {
     return;
   }
+  (void)turnOffScreen;
 
   renderBwToPanelCanvas();
 
@@ -478,38 +565,31 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
     mode = FULL_REFRESH;
   }
 
-  lgfx::epd_mode_t epdMode = lgfx::epd_mode_t::epd_fastest;
+  lgfx::epd_mode::epd_mode_t epdMode = lgfx::epd_mode::epd_fastest;
   if (mode == FULL_REFRESH) {
-    epdMode = lgfx::epd_mode_t::epd_quality;
+    epdMode = lgfx::epd_mode::epd_quality;
     refreshCycleCount = 0;
   } else if (mode == HALF_REFRESH) {
-    epdMode = lgfx::epd_mode_t::epd_text;
+    epdMode = lgfx::epd_mode::epd_text;
     refreshCycleCount = 0;
   } else {
     const bool useQualityMode = refreshCycleCount >= kQualityRefreshThreshold;
     const bool useMiddleMode = !useQualityMode && refreshCycleCount >= kMiddleRefreshThreshold &&
                                (refreshCycleCount % kMiddleRefreshThreshold) == 0;
     if (useQualityMode) {
-      epdMode = lgfx::epd_mode_t::epd_quality;
+      epdMode = lgfx::epd_mode::epd_quality;
       refreshCycleCount = 0;
     } else {
-      epdMode = useMiddleMode ? lgfx::epd_mode_t::epd_fast : lgfx::epd_mode_t::epd_fastest;
+      epdMode = useMiddleMode ? lgfx::epd_mode::epd_fast : lgfx::epd_mode::epd_fastest;
       refreshCycleCount++;
     }
   }
 
-  gfx->waitDisplay();
-  gfx->wakeup();
-  gfx->powerSave(false);
-  gfx->setEpdMode(epdMode);
-  panelCanvas->pushSprite(0, 0);
-  gfx->waitDisplay();
-  if (turnOffScreen) {
-    gfx->powerSave(true);
-  }
+  pushPanelCanvas(mode, epdMode);
 
   forceFullRefresh = false;
   forcedRefreshPending = false;
+  pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
 }
 
@@ -519,6 +599,8 @@ void HalDisplay::requestNextRefresh(HalDisplay::RefreshMode mode) {
   forcedRefreshMode = mode;
   forcedRefreshPending = true;
 }
+
+void HalDisplay::requestNextDisplayEffect(const DisplayEffect effect) { pendingDisplayEffect = effect; }
 
 void HalDisplay::deepSleep() {
   if (gfx) {
@@ -584,7 +666,7 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
   grayscaleBaseCaptured = false;
 }
 
-void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
+void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
   if (!displayReady || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
     return;
   }
@@ -599,19 +681,12 @@ void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
 
   renderGrayToPanelCanvas();
 
-  gfx->waitDisplay();
-  gfx->wakeup();
-  gfx->powerSave(false);
-  gfx->setEpdMode(lgfx::epd_mode_t::epd_quality);
-  panelCanvas->pushSprite(0, 0);
-  gfx->waitDisplay();
-  if (turnOffScreen) {
-    gfx->powerSave(true);
-  }
+  pushPanelCanvas(mode, epdModeForRefreshMode(mode));
 
   refreshCycleCount = 0;
   forcedRefreshPending = false;
   forceFullRefresh = false;
+  pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
 }
 
