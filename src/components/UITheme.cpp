@@ -4,6 +4,7 @@
 #include <GfxRenderer.h>
 #include <Logging.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "MappedInputManager.h"
@@ -15,6 +16,7 @@
 
 namespace {
 constexpr int SKIP_PAGE_MS = 700;
+constexpr int kStatusBarTextHeight = 23;  // SMALL_FONT_ID line height.
 }  // namespace
 
 UITheme UITheme::instance;
@@ -105,7 +107,8 @@ int UITheme::getStatusBarHeight() {
                              SETTINGS.statusBarBattery;
   const bool showProgressBar =
       SETTINGS.statusBarProgressBar != CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
-  return (showStatusBar ? (metrics.statusBarVerticalMargin) : 0) +
+  const int statusTextHeight = showStatusBar ? std::max(metrics.statusBarVerticalMargin, kStatusBarTextHeight) : 0;
+  return statusTextHeight +
          (showProgressBar ? (((SETTINGS.statusBarProgressBarThickness + 1) * 2) + metrics.progressBarMarginTop) : 0);
 }
 

@@ -116,6 +116,7 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
+        renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -155,6 +156,7 @@ void ActivityManager::loop() {
       }
       pendingAction = PendingAction::None;
       currentActivity = std::move(pendingActivity);
+      renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
 
       lock.unlock();  // onEnter may acquire its own lock
       currentActivity->onEnter();

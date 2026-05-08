@@ -40,6 +40,7 @@ class HalDisplay {
 
   void displayBuffer(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
+  void requestNextRefresh(RefreshMode mode = RefreshMode::HALF_REFRESH);
 
   // Power management
   void deepSleep();
@@ -50,6 +51,7 @@ class HalDisplay {
   void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
   void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer);
   void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer);
+  bool captureGrayscaleBaseBuffer(const uint8_t* bwBuffer);
   void cleanupGrayscaleBuffers(const uint8_t* bwBuffer);
 
   void displayGrayBuffer(bool turnOffScreen = false);
@@ -66,8 +68,12 @@ class HalDisplay {
   mutable FASTEPD epaper;
   uint8_t* grayscaleLsbBuffer = nullptr;
   uint8_t* grayscaleMsbBuffer = nullptr;
+  uint8_t* grayscaleBaseBuffer = nullptr;
+  bool grayscaleBaseCaptured = false;
   bool displayReady = false;
   bool forceFullRefresh = true;
+  bool forcedRefreshPending = false;
+  RefreshMode forcedRefreshMode = RefreshMode::HALF_REFRESH;
 
   void syncPreviousBuffer() const;
   uint8_t* allocatePlane();

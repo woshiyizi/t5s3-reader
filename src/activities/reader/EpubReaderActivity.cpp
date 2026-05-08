@@ -802,6 +802,44 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   fcm->logStats("bw_render");
   const auto tBwRender = millis();
 
+  if (SETTINGS.textAntiAliasing && !imagePageWithAA) {
+    if (!renderer.captureGrayscaleBaseBuffer()) {
+      LOG_ERR("ERS", "Failed to capture BW page for anti-aliasing");
+      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
+      const auto tDisplay = millis();
+      LOG_DBG("ERS", "Page render: prewarm=%lums bw_render=%lums display=%lums total=%lums", tPrewarm - t0,
+              tBwRender - tPrewarm, tDisplay - tBwRender, tDisplay - t0);
+      return;
+    }
+    const auto tBwStore = millis();
+
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
+    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+    renderer.copyGrayscaleLsbBuffers();
+    const auto tGrayLsb = millis();
+
+    renderer.clearScreen(0x00);
+    renderer.setRenderMode(GfxRenderer::GRAYSCALE_MSB);
+    page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
+    renderer.copyGrayscaleMsbBuffers();
+    const auto tGrayMsb = millis();
+
+    renderer.displayGrayBuffer();
+    const auto tGrayDisplay = millis();
+    renderer.setRenderMode(GfxRenderer::BW);
+    fcm->logStats("gray");
+    ReaderUtils::markRefreshCycleDisplayed(pagesUntilFullRefresh);
+
+    const auto tEnd = millis();
+    LOG_DBG("ERS",
+            "Page render: prewarm=%lums bw_render=%lums bw_store=%lums "
+            "gray_lsb=%lums gray_msb=%lums gray_display=%lums total=%lums",
+            tPrewarm - t0, tBwRender - tPrewarm, tBwStore - tBwRender, tGrayLsb - tBwStore, tGrayMsb - tGrayLsb,
+            tGrayDisplay - tGrayMsb, tEnd - t0);
+    return;
+  }
+
   if (imagePageWithAA) {
     // Double FAST_REFRESH with selective image blanking (pablohc's technique):
     // HALF_REFRESH sets particles too firmly for the grayscale LUT to adjust.
@@ -826,13 +864,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
   const auto tDisplay = millis();
 
-  // Save bw buffer to reset buffer state after grayscale data sync
-  renderer.storeBwBuffer();
-  const auto tBwStore = millis();
-
-  // grayscale rendering
-  // TODO: Only do this if font supports it
   if (SETTINGS.textAntiAliasing) {
+    // Save bw buffer to reset buffer state after grayscale data sync.
+    renderer.storeBwBuffer();
+    const auto tBwStore = millis();
+
     renderer.clearScreen(0x00);
     renderer.setRenderMode(GfxRenderer::GRAYSCALE_LSB);
     page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
@@ -863,15 +899,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
             tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tBwStore - tDisplay, tGrayLsb - tBwStore,
             tGrayMsb - tGrayLsb, tGrayDisplay - tGrayMsb, tBwRestore - tGrayDisplay, tEnd - t0);
   } else {
-    // restore the bw data
-    renderer.restoreBwBuffer();
-    const auto tBwRestore = millis();
-
     const auto tEnd = millis();
-    LOG_DBG("ERS",
-            "Page render: prewarm=%lums bw_render=%lums display=%lums bw_store=%lums bw_restore=%lums total=%lums",
-            tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tBwStore - tDisplay, tBwRestore - tBwStore,
-            tEnd - t0);
+    LOG_DBG("ERS", "Page render: prewarm=%lums bw_render=%lums display=%lums total=%lums", tPrewarm - t0,
+            tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
   }
 }
 

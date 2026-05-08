@@ -402,10 +402,10 @@ void TxtReaderActivity::renderPage() {
   renderLines();
   renderStatusBar();
 
-  ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
-
   if (SETTINGS.textAntiAliasing) {
-    ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); });
+    ReaderUtils::renderAntiAliased(renderer, pagesUntilFullRefresh, [&renderLines]() { renderLines(); });
+  } else {
+    ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
   }
   // scope destructor clears font cache via FontCacheManager
 }

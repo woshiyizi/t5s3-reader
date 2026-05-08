@@ -66,7 +66,7 @@ class GfxRenderer {
 
   static constexpr int VIEWABLE_MARGIN_TOP = 9;
   static constexpr int VIEWABLE_MARGIN_RIGHT = 3;
-  static constexpr int VIEWABLE_MARGIN_BOTTOM = 3;
+  static constexpr int VIEWABLE_MARGIN_BOTTOM = 9;
   static constexpr int VIEWABLE_MARGIN_LEFT = 3;
 
   // Setup
@@ -87,6 +87,7 @@ class GfxRenderer {
   int getScreenWidth() const;
   int getScreenHeight() const;
   void displayBuffer(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
+  void requestNextRefresh(HalDisplay::RefreshMode refreshMode = HalDisplay::HALF_REFRESH) const;
   // EXPERIMENTAL: Windowed update - display only a rectangular region
   // void displayWindow(int x, int y, int width, int height) const;
   void invertScreen() const;
@@ -150,6 +151,7 @@ class GfxRenderer {
   RenderMode getRenderMode() const { return renderMode; }
   void copyGrayscaleLsbBuffers() const;
   void copyGrayscaleMsbBuffers() const;
+  bool captureGrayscaleBaseBuffer() const;
   void displayGrayBuffer() const;
   bool storeBwBuffer();    // Returns true if buffer was stored successfully
   void restoreBwBuffer();  // Restore and free the stored buffer

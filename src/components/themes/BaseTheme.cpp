@@ -706,7 +706,15 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 
   // Draw Progress Text
   const auto screenHeight = renderer.getScreenHeight();
-  auto textY = screenHeight - UITheme::getInstance().getStatusBarHeight() - orientedMarginBottom - paddingBottom - 4;
+  int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+  if (!title.empty()) {
+    statusBarHeight = std::max(statusBarHeight, renderer.getLineHeight(SMALL_FONT_ID));
+  }
+  if (statusBarHeight > 0) {
+    const int clearTop = std::max(0, screenHeight - statusBarHeight - orientedMarginBottom - paddingBottom - 4);
+    renderer.fillRect(0, clearTop, renderer.getScreenWidth(), screenHeight - clearTop, false);
+  }
+  auto textY = screenHeight - statusBarHeight - orientedMarginBottom - paddingBottom - 4;
   int progressTextWidth = 0;
 
   if (SETTINGS.statusBarBookProgressPercentage || SETTINGS.statusBarChapterPageCount) {

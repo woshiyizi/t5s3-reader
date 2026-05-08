@@ -11,6 +11,30 @@
 HalDisplay display;
 
 namespace {
+constexpr uint32_t kEpdBusHz = 20000000;
+
+// ED047TC1 is the same 960x540 4.7" panel family used by the M5PaperS3
+// and LilyGo T5Pro FastEPD presets. Its waveform gives cleaner gray text
+// than the generic 6" EPDiy matrix.
+constexpr uint8_t kEd047tc1GrayMatrix[] = {
+    1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 1, 1, 2, 1, 1, 1,
+    2, 2, 1, 1, 1, 1, 2, 1,
+    2, 2, 1, 1, 2, 2, 1, 1,
+    2, 2, 2, 2, 1, 1, 2, 1,
+    2, 2, 1, 1, 1, 2, 2, 1,
+    2, 2, 1, 1, 2, 1, 1, 2,
+    2, 2, 2, 1, 2, 1, 1, 2,
+    2, 2, 2, 2, 2, 1, 2, 1,
+    1, 1, 1, 1, 1, 1, 2, 2,
+    2, 2, 1, 1, 1, 1, 2, 2,
+    1, 1, 1, 1, 2, 1, 2, 2,
+    2, 2, 1, 1, 2, 1, 2, 2,
+    2, 1, 1, 2, 2, 1, 2, 2,
+    2, 2, 1, 2, 2, 1, 2, 2,
+    2, 2, 2, 2, 2, 2, 2, 2,
+};
+
 uint8_t bitAt(const uint8_t* buffer, uint32_t index) {
   return (buffer[index >> 3] >> (7 - (index & 7))) & 0x01;
 }
@@ -21,6 +45,7 @@ HalDisplay::HalDisplay() = default;
 HalDisplay::~HalDisplay() {
   free(grayscaleLsbBuffer);
   free(grayscaleMsbBuffer);
+  free(grayscaleBaseBuffer);
 }
 
 uint8_t* HalDisplay::allocatePlane() {
@@ -34,8 +59,7 @@ uint8_t* HalDisplay::allocatePlane() {
 void HalDisplay::begin() {
   BoardT5S3::beginI2C();
 
-  // int rc = epaper.initPanel(BB_PANEL_EPDIY_V7);
-  int rc = epaper.initPanel(BB_PANEL_EPDIY_V7, 26666666);
+  int rc = epaper.initPanel(BB_PANEL_EPDIY_V7, kEpdBusHz);
   // epaper.setPanelSize(960, 540);
   if (rc != BBEP_SUCCESS) {
     LOG_ERR("DSP", "FastEPD initPanel failed: %d", rc);
@@ -45,6 +69,12 @@ void HalDisplay::begin() {
   rc = epaper.setPanelSize(DISPLAY_WIDTH, DISPLAY_HEIGHT);
   if (rc != BBEP_SUCCESS) {
     LOG_ERR("DSP", "FastEPD setPanelSize failed: %d", rc);
+    return;
+  }
+
+  rc = epaper.setCustomMatrix(kEd047tc1GrayMatrix, sizeof(kEd047tc1GrayMatrix));
+  if (rc != BBEP_SUCCESS) {
+    LOG_ERR("DSP", "FastEPD setCustomMatrix failed: %d", rc);
     return;
   }
 
@@ -131,9 +161,11 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
   }
 
   epaper.setMode(BB_MODE_1BPP);
-  (void)turnOffScreen;
-  const bool keepOn = false;
-  if (forceFullRefresh && mode == FAST_REFRESH) {
+  const bool keepOn = !turnOffScreen;
+  if (forcedRefreshPending && mode == FAST_REFRESH) {
+    LOG_DBG("DSP", "Forcing requested refresh mode for next display update");
+    mode = forcedRefreshMode;
+  } else if (forceFullRefresh && mode == FAST_REFRESH) {
     LOG_DBG("DSP", "Forcing full refresh for first display update");
     mode = FULL_REFRESH;
   }
@@ -155,10 +187,16 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
     LOG_ERR("DSP", "FastEPD displayBuffer failed: %d", rc);
   }
   forceFullRefresh = false;
+  forcedRefreshPending = false;
   syncPreviousBuffer();
 }
 
 void HalDisplay::refreshDisplay(HalDisplay::RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
+
+void HalDisplay::requestNextRefresh(HalDisplay::RefreshMode mode) {
+  forcedRefreshMode = mode;
+  forcedRefreshPending = true;
+}
 
 void HalDisplay::deepSleep() {
   if (displayReady) {
@@ -199,6 +237,23 @@ void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) {
   }
 }
 
+bool HalDisplay::captureGrayscaleBaseBuffer(const uint8_t* bwBuffer) {
+  if (!bwBuffer) {
+    return false;
+  }
+  if (!grayscaleBaseBuffer) {
+    grayscaleBaseBuffer = allocatePlane();
+  }
+  if (!grayscaleBaseBuffer) {
+    LOG_ERR("DSP", "Failed to allocate grayscale base buffer");
+    grayscaleBaseCaptured = false;
+    return false;
+  }
+  memcpy(grayscaleBaseBuffer, bwBuffer, BUFFER_SIZE);
+  grayscaleBaseCaptured = true;
+  return true;
+}
+
 void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
   epaper.setMode(BB_MODE_1BPP);
   uint8_t* frameBuffer = getFrameBuffer();
@@ -213,8 +268,15 @@ void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
     return;
   }
 
-  const uint8_t* bwBuffer = getFrameBuffer();
-  if (!bwBuffer) {
+  if (!grayscaleBaseCaptured) {
+    const uint8_t* bwSource = epaper.previousBuffer();
+    if (!bwSource) {
+      bwSource = getFrameBuffer();
+    }
+    if (!captureGrayscaleBaseBuffer(bwSource)) {
+      return;
+    }
+  } else if (!grayscaleBaseBuffer) {
     return;
   }
 
@@ -225,9 +287,9 @@ void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
   }
 
   const uint32_t pixelCount = static_cast<uint32_t>(DISPLAY_WIDTH) * DISPLAY_HEIGHT;
-  for (uint32_t pixel = 0; pixel < pixelCount; pixel += 2) {
-    auto grayForPixel = [&](uint32_t idx) -> uint8_t {
-      if (bitAt(bwBuffer, idx)) {
+  for (uint32_t pixel = pixelCount; pixel > 0; pixel -= 2) {
+    auto grayForPixel = [&](const uint32_t idx) -> uint8_t {
+      if (bitAt(grayscaleBaseBuffer, idx)) {
         return 0x0F;
       }
       const bool lsb = bitAt(grayscaleLsbBuffer, idx);
@@ -244,15 +306,27 @@ void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
       return 0x00;
     };
 
-    const uint8_t hi = grayForPixel(pixel);
-    const uint8_t lo = (pixel + 1 < pixelCount) ? grayForPixel(pixel + 1) : 0x0F;
-    grayBuffer[pixel >> 1] = static_cast<uint8_t>((hi << 4) | lo);
+    const uint32_t hiPixel = pixel - 2;
+    const uint32_t loPixel = pixel - 1;
+    const uint8_t hi = grayForPixel(hiPixel);
+    const uint8_t lo = grayForPixel(loPixel);
+    grayBuffer[hiPixel >> 1] = static_cast<uint8_t>((hi << 4) | lo);
   }
 
   const int rc = epaper.fullUpdate(CLEAR_NONE, !turnOffScreen);
   if (rc != BBEP_SUCCESS) {
     LOG_ERR("DSP", "FastEPD grayscale update failed: %d", rc);
   }
+
+  epaper.setMode(BB_MODE_1BPP);
+  uint8_t* frameBuffer = getFrameBuffer();
+  if (frameBuffer) {
+    memcpy(frameBuffer, grayscaleBaseBuffer, BUFFER_SIZE);
+    syncPreviousBuffer();
+  }
+  forceFullRefresh = false;
+  forcedRefreshPending = false;
+  grayscaleBaseCaptured = false;
 }
 
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }

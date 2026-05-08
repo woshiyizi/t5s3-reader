@@ -63,14 +63,24 @@ inline void displayWithRefreshCycle(const GfxRenderer& renderer, int& pagesUntil
   }
 }
 
-// Grayscale anti-aliasing pass. Renders content twice (LSB + MSB) to build
-// the grayscale buffer. Only the content callback is re-rendered — status bars
-// and other overlays should be drawn before calling this.
+inline void markRefreshCycleDisplayed(int& pagesUntilFullRefresh) {
+  if (pagesUntilFullRefresh <= 1) {
+    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
+  } else {
+    pagesUntilFullRefresh--;
+  }
+}
+
+// Grayscale anti-aliasing pass. The caller renders the BW page first,
+// captures it, renders gray planes, then updates the panel once.
+// Only the content callback is re-rendered; status bars stay in the captured
+// BW base so they are not updated twice.
 // Kept as a template to avoid std::function overhead; instantiated once per reader type.
 template <typename RenderFn>
-void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
-  if (!renderer.storeBwBuffer()) {
-    LOG_ERR("READER", "Failed to store BW buffer for anti-aliasing");
+void renderAntiAliased(GfxRenderer& renderer, int& pagesUntilFullRefresh, RenderFn&& renderFn) {
+  if (!renderer.captureGrayscaleBaseBuffer()) {
+    LOG_ERR("READER", "Failed to capture BW buffer for anti-aliasing");
+    displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
     return;
   }
 
@@ -86,8 +96,7 @@ void renderAntiAliased(GfxRenderer& renderer, RenderFn&& renderFn) {
 
   renderer.displayGrayBuffer();
   renderer.setRenderMode(GfxRenderer::BW);
-
-  renderer.restoreBwBuffer();
+  markRefreshCycleDisplayed(pagesUntilFullRefresh);
 }
 
 }  // namespace ReaderUtils

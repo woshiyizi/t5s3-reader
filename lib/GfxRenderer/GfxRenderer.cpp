@@ -922,6 +922,10 @@ void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const
   display.displayBuffer(refreshMode, fadingFix);
 }
 
+void GfxRenderer::requestNextRefresh(const HalDisplay::RefreshMode refreshMode) const {
+  display.requestNextRefresh(refreshMode);
+}
+
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";
@@ -1192,6 +1196,8 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuffers(frameBuffer); }
 
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
+
+bool GfxRenderer::captureGrayscaleBaseBuffer() const { return display.captureGrayscaleBaseBuffer(frameBuffer); }
 
 void GfxRenderer::displayGrayBuffer() const { display.displayGrayBuffer(fadingFix); }
 
