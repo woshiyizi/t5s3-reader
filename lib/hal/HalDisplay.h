@@ -1,7 +1,14 @@
 #pragma once
 #include <Arduino.h>
 #include <BoardT5S3.h>
-#include <FastEPD.h>
+
+class T5S3M5GfxDisplay;
+
+namespace lgfx {
+inline namespace v1 {
+class LGFX_Sprite;
+}
+}  // namespace lgfx
 
 class HalDisplay {
  public:
@@ -24,8 +31,8 @@ class HalDisplay {
   // Display dimensions
   static constexpr uint16_t VISIBLE_WIDTH = BoardT5S3Pins::LogicalWidth;
   static constexpr uint16_t VISIBLE_HEIGHT = BoardT5S3Pins::LogicalHeight;
-  // FastEPD scans the panel in physical orientation. Keep the framebuffer in
-  // physical 960x540 while exposing portrait logical coordinates to the UI.
+  // Keep the framebuffer in physical 960x540 scan orientation while exposing
+  // portrait logical coordinates to the UI.
   static constexpr uint16_t DISPLAY_WIDTH = ((BoardT5S3Pins::DisplayWidth + 15) / 16) * 16;
   static constexpr uint16_t DISPLAY_HEIGHT = BoardT5S3Pins::DisplayHeight;
   static constexpr uint16_t DISPLAY_WIDTH_BYTES = DISPLAY_WIDTH / 8;
@@ -65,7 +72,9 @@ class HalDisplay {
   uint32_t getBufferSize() const;
 
  private:
-  mutable FASTEPD epaper;
+  T5S3M5GfxDisplay* gfx = nullptr;
+  lgfx::LGFX_Sprite* panelCanvas = nullptr;
+  uint8_t* frameBuffer = nullptr;
   uint8_t* grayscaleLsbBuffer = nullptr;
   uint8_t* grayscaleMsbBuffer = nullptr;
   uint8_t* grayscaleBaseBuffer = nullptr;
@@ -74,9 +83,13 @@ class HalDisplay {
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
   RefreshMode forcedRefreshMode = RefreshMode::HALF_REFRESH;
+  uint32_t refreshCycleCount = 0;
 
-  void syncPreviousBuffer() const;
   uint8_t* allocatePlane();
+  void releaseBackend();
+  bool initializePanelCanvas();
+  void renderBwToPanelCanvas() const;
+  void renderGrayToPanelCanvas() const;
 };
 
 extern HalDisplay display;

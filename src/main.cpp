@@ -439,7 +439,7 @@ void loop() {
       mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
     LOG_DBG("MAIN", "Manual screen refresh triggered");
     RenderLock lock;
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   }
 
   // Refresh the battery icon when USB is plugged or unplugged.

@@ -154,9 +154,11 @@ void ActivityManager::loop() {
         stackActivities.push_back(std::move(currentActivity));
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
+      const auto transitionAction = pendingAction;
       pendingAction = PendingAction::None;
       currentActivity = std::move(pendingActivity);
-      renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+      renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? HalDisplay::FULL_REFRESH
+                                                                             : HalDisplay::HALF_REFRESH);
 
       lock.unlock();  // onEnter may acquire its own lock
       currentActivity->onEnter();

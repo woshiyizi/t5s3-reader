@@ -2,6 +2,10 @@
 
 #include <BoardT5S3.h>
 #include <Logging.h>
+#include <M5GFX.h>
+#include <lgfx/v1/platforms/esp32/Bus_EPD.h>
+#include <lgfx/v1/platforms/esp32/Panel_EPD.hpp>
+#include <Wire.h>
 #include <esp_heap_caps.h>
 
 #include <algorithm>
@@ -11,38 +15,264 @@
 HalDisplay display;
 
 namespace {
-constexpr uint32_t kEpdBusHz = 20000000;
+constexpr uint32_t kEpdBusHz = 16000000;
+constexpr uint32_t kMiddleRefreshThreshold = 8;
+constexpr uint32_t kQualityRefreshThreshold = 18;
+constexpr int kDefaultVcomMv = -1600;
 
-// ED047TC1 is the same 960x540 4.7" panel family used by the M5PaperS3
-// and LilyGo T5Pro FastEPD presets. Its waveform gives cleaner gray text
-// than the generic 6" EPDiy matrix.
-constexpr uint8_t kEd047tc1GrayMatrix[] = {
-    1, 1, 1, 1, 1, 1, 1, 1,
-    2, 2, 1, 1, 2, 1, 1, 1,
-    2, 2, 1, 1, 1, 1, 2, 1,
-    2, 2, 1, 1, 2, 2, 1, 1,
-    2, 2, 2, 2, 1, 1, 2, 1,
-    2, 2, 1, 1, 1, 2, 2, 1,
-    2, 2, 1, 1, 2, 1, 1, 2,
-    2, 2, 2, 1, 2, 1, 1, 2,
-    2, 2, 2, 2, 2, 1, 2, 1,
-    1, 1, 1, 1, 1, 1, 2, 2,
-    2, 2, 1, 1, 1, 1, 2, 2,
-    1, 1, 1, 1, 2, 1, 2, 2,
-    2, 2, 1, 1, 2, 1, 2, 2,
-    2, 1, 1, 2, 2, 1, 2, 2,
-    2, 2, 1, 2, 2, 1, 2, 2,
-    2, 2, 2, 2, 2, 2, 2, 2,
+constexpr uint8_t kTpsRegEnable = 0x01;
+constexpr uint8_t kTpsRegVcom = 0x03;
+constexpr uint8_t kTpsRegPowerGood = 0x0F;
+constexpr uint8_t kTpsEnableOutputs = 0x3F;
+
+constexpr uint8_t kGrayBlack = 0x00;
+constexpr uint8_t kGrayDark = 0x55;
+constexpr uint8_t kGrayLight = 0xAA;
+constexpr uint8_t kGrayWhite = 0xFF;
+
+bool writeTpsRegister(const uint8_t reg, const uint8_t* data, const size_t len) {
+  Wire.beginTransmission(T5S3_TPS65185_ADDR);
+  Wire.write(reg);
+  if (data != nullptr && len > 0) {
+    Wire.write(data, len);
+  }
+  return Wire.endTransmission() == 0;
+}
+
+bool writeTpsRegister8(const uint8_t reg, const uint8_t value) { return writeTpsRegister(reg, &value, 1); }
+
+bool readTpsRegister(const uint8_t reg, uint8_t* data, const size_t len) {
+  if (data == nullptr || len == 0) {
+    return false;
+  }
+
+  Wire.beginTransmission(T5S3_TPS65185_ADDR);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+
+  const uint8_t requested = static_cast<uint8_t>(len);
+  if (Wire.requestFrom(static_cast<uint8_t>(T5S3_TPS65185_ADDR), requested) != requested) {
+    while (Wire.available()) {
+      Wire.read();
+    }
+    return false;
+  }
+
+  for (size_t i = 0; i < len; ++i) {
+    data[i] = Wire.read();
+  }
+  return true;
+}
+
+bool waitForPcaPinHigh(const uint8_t pin, const uint32_t timeoutMs) {
+  const uint32_t start = millis();
+  bool high = false;
+  while (millis() - start < timeoutMs) {
+    if (BoardT5S3::readPca9535Pin(pin, &high) && high) {
+      return true;
+    }
+    delay(1);
+  }
+  return false;
+}
+
+bool waitForTpsReady(const uint32_t timeoutMs) {
+  const uint32_t start = millis();
+  uint8_t powerGood = 0;
+  while (millis() - start < timeoutMs) {
+    if (readTpsRegister(kTpsRegPowerGood, &powerGood, 1) && (powerGood & 0xFA) == 0xFA) {
+      return true;
+    }
+    delay(1);
+  }
+  return false;
+}
+
+class T5S3BusEPD : public lgfx::Bus_EPD {
+ public:
+  bool init() override {
+    if (!preparePowerPins()) {
+      LOG_ERR("DSP", "Failed to configure PCA9535 power pins");
+      return false;
+    }
+    return lgfx::Bus_EPD::init();
+  }
+
+  bool powerControl(const bool powerOn) override {
+    if (_pwr_on == powerOn) {
+      return true;
+    }
+
+    wait();
+    if (powerOn) {
+      return powerOnSequence();
+    }
+
+    powerOffSequence();
+    return true;
+  }
+
+ private:
+  bool preparePowerPins() {
+    bool ok = true;
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO13_TPS_PWRUP, OUTPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO14_VCOM_CTRL, OUTPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO15_TPS_WAKEUP, OUTPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO16_TPS_PWR_GOOD, INPUT);
+    ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO17_TPS_INT, INPUT);
+
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO10_EP_OE, false);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
+    return ok;
+  }
+
+  bool powerOnSequence() {
+    const auto& cfg = config();
+
+    lgfx::gpio_hi(cfg.pin_spv);
+
+    bool ok = true;
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO10_EP_OE, true);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO11_EP_MODE, true);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, true);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, true);
+    ok &= BoardT5S3::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, true);
+    if (!ok) {
+      LOG_ERR("DSP", "Failed to assert EPD power rails");
+      powerOffSequence();
+      return false;
+    }
+
+    delay(1);
+    if (!waitForPcaPinHigh(PCA9535_IO16_TPS_PWR_GOOD, 400)) {
+      LOG_ERR("DSP", "TPS65185 power-good pin did not assert");
+      powerOffSequence();
+      return false;
+    }
+
+    if (!writeTpsRegister8(kTpsRegEnable, kTpsEnableOutputs)) {
+      LOG_ERR("DSP", "TPS65185 enable write failed");
+      powerOffSequence();
+      return false;
+    }
+
+    const uint16_t vcomValue = static_cast<uint16_t>(-kDefaultVcomMv / 10);
+    const uint8_t vcomBytes[2] = {
+        static_cast<uint8_t>(vcomValue & 0xFF),
+        static_cast<uint8_t>(vcomValue >> 8),
+    };
+    if (!writeTpsRegister(kTpsRegVcom, vcomBytes, sizeof(vcomBytes))) {
+      LOG_ERR("DSP", "TPS65185 VCOM write failed");
+      powerOffSequence();
+      return false;
+    }
+
+    if (!waitForTpsReady(400)) {
+      LOG_ERR("DSP", "TPS65185 rails never reached ready state");
+      powerOffSequence();
+      return false;
+    }
+
+    _pwr_on = true;
+    return true;
+  }
+
+  void powerOffSequence() {
+    const auto& cfg = config();
+
+    BoardT5S3::writePca9535Pin(PCA9535_IO10_EP_OE, false);
+    BoardT5S3::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
+    BoardT5S3::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
+    BoardT5S3::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
+    delay(1);
+    BoardT5S3::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
+
+    lgfx::gpio_lo(cfg.pin_spv);
+    _pwr_on = false;
+  }
 };
 
-uint8_t bitAt(const uint8_t* buffer, uint32_t index) {
-  return (buffer[index >> 3] >> (7 - (index & 7))) & 0x01;
+uint8_t grayscaleValueForBit(const uint8_t baseByte, const uint8_t lsbByte, const uint8_t msbByte, const uint8_t mask) {
+  if (baseByte & mask) {
+    return kGrayWhite;
+  }
+
+  const bool lsb = (lsbByte & mask) != 0;
+  const bool msb = (msbByte & mask) != 0;
+
+  if (msb && lsb) {
+    return kGrayDark;
+  }
+  if (msb) {
+    return kGrayLight;
+  }
+  if (lsb) {
+    return kGrayDark;
+  }
+  return kGrayBlack;
 }
 }  // namespace
+
+class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
+ public:
+  T5S3M5GfxDisplay() {
+    auto busCfg = bus_.config();
+    busCfg.bus_speed = kEpdBusHz;
+    busCfg.pin_data[0] = EP_D0;
+    busCfg.pin_data[1] = EP_D1;
+    busCfg.pin_data[2] = EP_D2;
+    busCfg.pin_data[3] = EP_D3;
+    busCfg.pin_data[4] = EP_D4;
+    busCfg.pin_data[5] = EP_D5;
+    busCfg.pin_data[6] = EP_D6;
+    busCfg.pin_data[7] = EP_D7;
+    busCfg.pin_pwr = T5S3_LORA_CS;  // Required by esp_lcd i80 API, not used for real power control.
+    busCfg.pin_sph = EP_STH;
+    busCfg.pin_spv = EP_STV;
+    busCfg.pin_oe = T5S3_LORA_CS;   // Dummy direct GPIO; OE itself is handled through the PCA9535.
+    busCfg.pin_le = EP_LEH;
+    busCfg.pin_cl = EP_CKH;
+    busCfg.pin_ckv = EP_CKV;
+    busCfg.bus_width = 8;
+    bus_.config(busCfg);
+
+    panel_.setBus(&bus_);
+
+    auto detailCfg = panel_.config_detail();
+    detailCfg.line_padding = 8;
+    panel_.config_detail(detailCfg);
+
+    auto panelCfg = panel_.config();
+    panelCfg.memory_width = HalDisplay::DISPLAY_WIDTH;
+    panelCfg.panel_width = HalDisplay::DISPLAY_WIDTH;
+    panelCfg.memory_height = HalDisplay::DISPLAY_HEIGHT;
+    panelCfg.panel_height = HalDisplay::DISPLAY_HEIGHT;
+    panelCfg.offset_rotation = 0;
+    panelCfg.offset_x = 0;
+    panelCfg.offset_y = 0;
+    panelCfg.bus_shared = false;
+    panel_.config(panelCfg);
+
+    setPanel(&panel_);
+  }
+
+ private:
+  T5S3BusEPD bus_;
+  lgfx::Panel_EPD panel_;
+};
 
 HalDisplay::HalDisplay() = default;
 
 HalDisplay::~HalDisplay() {
+  releaseBackend();
+  free(frameBuffer);
   free(grayscaleLsbBuffer);
   free(grayscaleMsbBuffer);
   free(grayscaleBaseBuffer);
@@ -56,40 +286,76 @@ uint8_t* HalDisplay::allocatePlane() {
   return plane;
 }
 
+void HalDisplay::releaseBackend() {
+  delete panelCanvas;
+  panelCanvas = nullptr;
+
+  delete gfx;
+  gfx = nullptr;
+
+  displayReady = false;
+}
+
+bool HalDisplay::initializePanelCanvas() {
+  panelCanvas = new lgfx::LGFX_Sprite(gfx);
+  if (!panelCanvas) {
+    return false;
+  }
+
+  panelCanvas->setPsram(true);
+  panelCanvas->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
+  return panelCanvas->createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT) != nullptr;
+}
+
 void HalDisplay::begin() {
+  releaseBackend();
   BoardT5S3::beginI2C();
 
-  int rc = epaper.initPanel(BB_PANEL_EPDIY_V7, kEpdBusHz);
-  // epaper.setPanelSize(960, 540);
-  if (rc != BBEP_SUCCESS) {
-    LOG_ERR("DSP", "FastEPD initPanel failed: %d", rc);
+  if (!frameBuffer) {
+    frameBuffer = allocatePlane();
+  }
+  if (!frameBuffer) {
+    LOG_ERR("DSP", "Failed to allocate logical framebuffer");
     return;
   }
 
-  rc = epaper.setPanelSize(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-  if (rc != BBEP_SUCCESS) {
-    LOG_ERR("DSP", "FastEPD setPanelSize failed: %d", rc);
+  gfx = new T5S3M5GfxDisplay();
+  if (!gfx) {
+    LOG_ERR("DSP", "Failed to allocate M5GFX device");
     return;
   }
 
-  rc = epaper.setCustomMatrix(kEd047tc1GrayMatrix, sizeof(kEd047tc1GrayMatrix));
-  if (rc != BBEP_SUCCESS) {
-    LOG_ERR("DSP", "FastEPD setCustomMatrix failed: %d", rc);
+  if (!gfx->init()) {
+    LOG_ERR("DSP", "M5GFX init failed");
+    releaseBackend();
     return;
   }
 
-  epaper.setMode(BB_MODE_1BPP);
+  gfx->setRotation(0);
+  gfx->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
+  gfx->setEpdMode(lgfx::epd_mode_t::epd_fastest);
+  gfx->powerSave(true);
+
+  if (!initializePanelCanvas()) {
+    LOG_ERR("DSP", "Failed to create M5GFX panel canvas");
+    releaseBackend();
+    return;
+  }
+
   clearScreen(0xFF);
-  syncPreviousBuffer();
-  forceFullRefresh = true;
-  displayReady = true;
+  memset(panelCanvas->getBuffer(), kGrayWhite, static_cast<size_t>(DISPLAY_WIDTH) * DISPLAY_HEIGHT);
 
-  LOG_INF("DSP", "FastEPD T5S3 display initialized: %ux%u visible, %ux%u scan", VISIBLE_WIDTH, VISIBLE_HEIGHT,
+  displayReady = true;
+  forceFullRefresh = true;
+  forcedRefreshPending = false;
+  refreshCycleCount = 0;
+  grayscaleBaseCaptured = false;
+
+  LOG_INF("DSP", "M5GFX T5S3 display initialized: %ux%u visible, %ux%u scan", VISIBLE_WIDTH, VISIBLE_HEIGHT,
           DISPLAY_WIDTH, DISPLAY_HEIGHT);
 }
 
-void HalDisplay::clearScreen(uint8_t color) const {
-  uint8_t* frameBuffer = getFrameBuffer();
+void HalDisplay::clearScreen(const uint8_t color) const {
   if (frameBuffer) {
     memset(frameBuffer, color, BUFFER_SIZE);
   }
@@ -97,7 +363,6 @@ void HalDisplay::clearScreen(uint8_t color) const {
 
 void HalDisplay::drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                            bool fromProgmem) const {
-  uint8_t* frameBuffer = getFrameBuffer();
   if (!frameBuffer || !imageData || x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) {
     return;
   }
@@ -123,7 +388,6 @@ void HalDisplay::drawImage(const uint8_t* imageData, uint16_t x, uint16_t y, uin
 
 void HalDisplay::drawImageTransparent(const uint8_t* imageData, uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                                       bool fromProgmem) const {
-  uint8_t* frameBuffer = getFrameBuffer();
   if (!frameBuffer || !imageData || x >= DISPLAY_WIDTH || y >= DISPLAY_HEIGHT) {
     return;
   }
@@ -147,48 +411,106 @@ void HalDisplay::drawImageTransparent(const uint8_t* imageData, uint16_t x, uint
   }
 }
 
-void HalDisplay::syncPreviousBuffer() const {
-  uint8_t* current = epaper.currentBuffer();
-  uint8_t* previous = epaper.previousBuffer();
-  if (current && previous) {
-    memcpy(previous, current, BUFFER_SIZE);
+void HalDisplay::renderBwToPanelCanvas() const {
+  if (!panelCanvas || !frameBuffer) {
+    return;
+  }
+
+  auto* grayBuffer = static_cast<uint8_t*>(panelCanvas->getBuffer());
+  if (!grayBuffer) {
+    return;
+  }
+
+  for (uint16_t y = 0; y < DISPLAY_HEIGHT; ++y) {
+    const uint8_t* srcRow = frameBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    uint8_t* dstRow = grayBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH;
+    for (uint16_t byteX = 0; byteX < DISPLAY_WIDTH_BYTES; ++byteX) {
+      const uint8_t srcByte = srcRow[byteX];
+      for (uint8_t bit = 0; bit < 8; ++bit) {
+        dstRow[byteX * 8 + bit] = (srcByte & (0x80 >> bit)) ? kGrayWhite : kGrayBlack;
+      }
+    }
+  }
+}
+
+void HalDisplay::renderGrayToPanelCanvas() const {
+  if (!panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer || !grayscaleBaseBuffer) {
+    return;
+  }
+
+  auto* grayBuffer = static_cast<uint8_t*>(panelCanvas->getBuffer());
+  if (!grayBuffer) {
+    return;
+  }
+
+  for (uint16_t y = 0; y < DISPLAY_HEIGHT; ++y) {
+    const uint8_t* baseRow = grayscaleBaseBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    const uint8_t* lsbRow = grayscaleLsbBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    const uint8_t* msbRow = grayscaleMsbBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH_BYTES;
+    uint8_t* dstRow = grayBuffer + static_cast<uint32_t>(y) * DISPLAY_WIDTH;
+
+    for (uint16_t byteX = 0; byteX < DISPLAY_WIDTH_BYTES; ++byteX) {
+      const uint8_t baseByte = baseRow[byteX];
+      const uint8_t lsbByte = lsbRow[byteX];
+      const uint8_t msbByte = msbRow[byteX];
+
+      for (uint8_t bit = 0; bit < 8; ++bit) {
+        const uint8_t mask = static_cast<uint8_t>(0x80 >> bit);
+        dstRow[byteX * 8 + bit] = grayscaleValueForBit(baseByte, lsbByte, msbByte, mask);
+      }
+    }
   }
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
-  if (!displayReady) {
+  if (!displayReady || !gfx || !panelCanvas) {
     return;
   }
 
-  epaper.setMode(BB_MODE_1BPP);
-  const bool keepOn = !turnOffScreen;
+  renderBwToPanelCanvas();
+
   if (forcedRefreshPending && mode == FAST_REFRESH) {
     LOG_DBG("DSP", "Forcing requested refresh mode for next display update");
     mode = forcedRefreshMode;
-  } else if (forceFullRefresh && mode == FAST_REFRESH) {
+  }
+  if (forceFullRefresh && mode != FULL_REFRESH) {
     LOG_DBG("DSP", "Forcing full refresh for first display update");
     mode = FULL_REFRESH;
   }
-  int rc = BBEP_SUCCESS;
-  switch (mode) {
-    case FULL_REFRESH:
-      rc = epaper.fullUpdate(CLEAR_SLOW, keepOn);
-      break;
-    case HALF_REFRESH:
-      rc = epaper.fullUpdate(CLEAR_FAST, keepOn);
-      break;
-    case FAST_REFRESH:
-    default:
-      rc = epaper.partialUpdate(keepOn);
-      break;
+
+  lgfx::epd_mode_t epdMode = lgfx::epd_mode_t::epd_fastest;
+  if (mode == FULL_REFRESH) {
+    epdMode = lgfx::epd_mode_t::epd_quality;
+    refreshCycleCount = 0;
+  } else if (mode == HALF_REFRESH) {
+    epdMode = lgfx::epd_mode_t::epd_text;
+    refreshCycleCount = 0;
+  } else {
+    const bool useQualityMode = refreshCycleCount >= kQualityRefreshThreshold;
+    const bool useMiddleMode = !useQualityMode && refreshCycleCount >= kMiddleRefreshThreshold &&
+                               (refreshCycleCount % kMiddleRefreshThreshold) == 0;
+    if (useQualityMode) {
+      epdMode = lgfx::epd_mode_t::epd_quality;
+      refreshCycleCount = 0;
+    } else {
+      epdMode = useMiddleMode ? lgfx::epd_mode_t::epd_fast : lgfx::epd_mode_t::epd_fastest;
+      refreshCycleCount++;
+    }
   }
 
-  if (rc != BBEP_SUCCESS) {
-    LOG_ERR("DSP", "FastEPD displayBuffer failed: %d", rc);
+  gfx->waitDisplay();
+  gfx->wakeup();
+  gfx->powerSave(false);
+  gfx->setEpdMode(epdMode);
+  panelCanvas->pushSprite(0, 0);
+  gfx->waitDisplay();
+  if (turnOffScreen) {
+    gfx->powerSave(true);
   }
+
   forceFullRefresh = false;
   forcedRefreshPending = false;
-  syncPreviousBuffer();
+  grayscaleBaseCaptured = false;
 }
 
 void HalDisplay::refreshDisplay(HalDisplay::RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
@@ -199,14 +521,15 @@ void HalDisplay::requestNextRefresh(HalDisplay::RefreshMode mode) {
 }
 
 void HalDisplay::deepSleep() {
-  if (displayReady) {
-    epaper.einkPower(0);
-    epaper.deInit();
+  if (gfx) {
+    gfx->waitDisplay();
+    gfx->powerSave(true);
+    gfx->sleep();
   }
   BoardT5S3::deinitForSleep();
 }
 
-uint8_t* HalDisplay::getFrameBuffer() const { return epaper.currentBuffer(); }
+uint8_t* HalDisplay::getFrameBuffer() const { return frameBuffer; }
 
 void HalDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {
   copyGrayscaleLsbBuffers(lsbBuffer);
@@ -255,77 +578,40 @@ bool HalDisplay::captureGrayscaleBaseBuffer(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
-  epaper.setMode(BB_MODE_1BPP);
-  uint8_t* frameBuffer = getFrameBuffer();
-  if (frameBuffer && bwBuffer) {
+  if (frameBuffer && bwBuffer && frameBuffer != bwBuffer) {
     memcpy(frameBuffer, bwBuffer, BUFFER_SIZE);
   }
-  syncPreviousBuffer();
+  grayscaleBaseCaptured = false;
 }
 
 void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
-  if (!displayReady || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+  if (!displayReady || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
     return;
   }
 
   if (!grayscaleBaseCaptured) {
-    const uint8_t* bwSource = epaper.previousBuffer();
-    if (!bwSource) {
-      bwSource = getFrameBuffer();
-    }
-    if (!captureGrayscaleBaseBuffer(bwSource)) {
+    if (!captureGrayscaleBaseBuffer(frameBuffer)) {
       return;
     }
   } else if (!grayscaleBaseBuffer) {
     return;
   }
 
-  epaper.setMode(BB_MODE_4BPP);
-  uint8_t* grayBuffer = epaper.currentBuffer();
-  if (!grayBuffer) {
-    return;
+  renderGrayToPanelCanvas();
+
+  gfx->waitDisplay();
+  gfx->wakeup();
+  gfx->powerSave(false);
+  gfx->setEpdMode(lgfx::epd_mode_t::epd_quality);
+  panelCanvas->pushSprite(0, 0);
+  gfx->waitDisplay();
+  if (turnOffScreen) {
+    gfx->powerSave(true);
   }
 
-  const uint32_t pixelCount = static_cast<uint32_t>(DISPLAY_WIDTH) * DISPLAY_HEIGHT;
-  for (uint32_t pixel = pixelCount; pixel > 0; pixel -= 2) {
-    auto grayForPixel = [&](const uint32_t idx) -> uint8_t {
-      if (bitAt(grayscaleBaseBuffer, idx)) {
-        return 0x0F;
-      }
-      const bool lsb = bitAt(grayscaleLsbBuffer, idx);
-      const bool msb = bitAt(grayscaleMsbBuffer, idx);
-      if (msb && lsb) {
-        return 0x05;
-      }
-      if (msb) {
-        return 0x0A;
-      }
-      if (lsb) {
-        return 0x05;
-      }
-      return 0x00;
-    };
-
-    const uint32_t hiPixel = pixel - 2;
-    const uint32_t loPixel = pixel - 1;
-    const uint8_t hi = grayForPixel(hiPixel);
-    const uint8_t lo = grayForPixel(loPixel);
-    grayBuffer[hiPixel >> 1] = static_cast<uint8_t>((hi << 4) | lo);
-  }
-
-  const int rc = epaper.fullUpdate(CLEAR_NONE, !turnOffScreen);
-  if (rc != BBEP_SUCCESS) {
-    LOG_ERR("DSP", "FastEPD grayscale update failed: %d", rc);
-  }
-
-  epaper.setMode(BB_MODE_1BPP);
-  uint8_t* frameBuffer = getFrameBuffer();
-  if (frameBuffer) {
-    memcpy(frameBuffer, grayscaleBaseBuffer, BUFFER_SIZE);
-    syncPreviousBuffer();
-  }
-  forceFullRefresh = false;
+  refreshCycleCount = 0;
   forcedRefreshPending = false;
+  forceFullRefresh = false;
   grayscaleBaseCaptured = false;
 }
 
