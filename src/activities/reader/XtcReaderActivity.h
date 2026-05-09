@@ -13,6 +13,7 @@
 
 class XtcReaderActivity final : public Activity {
   std::shared_ptr<Xtc> xtc;
+  HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
 
   uint32_t currentPage = 0;
   int pagesUntilFullRefresh = 0;
@@ -23,8 +24,11 @@ class XtcReaderActivity final : public Activity {
   void loadProgress();
 
  public:
-  explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Xtc> xtc)
-      : Activity("XtcReader", renderer, mappedInput), xtc(std::move(xtc)) {}
+  explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Xtc> xtc,
+                             HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH)
+      : Activity("XtcReader", renderer, mappedInput),
+        xtc(std::move(xtc)),
+        initialRefreshMode(initialRefreshMode) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

@@ -33,6 +33,8 @@ void XtcReaderActivity::onEnter() {
     return;
   }
 
+  pagesUntilFullRefresh = ReaderUtils::initialPagesUntilFullRefresh(initialRefreshMode);
+
   xtc->setupCacheDir();
 
   // Load saved progress

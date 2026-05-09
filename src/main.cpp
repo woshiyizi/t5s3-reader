@@ -243,6 +243,23 @@ void setupDisplayAndFonts() {
   LOG_DBG("MAIN", "Fonts setup");
 }
 
+HalDisplay::RefreshMode readerResumeRefreshMode() {
+  switch (SETTINGS.readerDisplayMode) {
+    case CrossPointSettings::READER_DISPLAY_FAST:
+      return HalDisplay::FAST_REFRESH;
+    case CrossPointSettings::READER_DISPLAY_STANDARD:
+      return HalDisplay::BALANCED_REFRESH;
+    case CrossPointSettings::READER_DISPLAY_QUALITY:
+    default:
+      return HalDisplay::HALF_REFRESH;
+  }
+}
+
+bool shouldResumeReaderOnBoot() {
+  return !APP_STATE.openEpubPath.empty() && APP_STATE.lastSleepFromReader &&
+         !mappedInputManager.isPressed(MappedInputManager::Button::Back) && APP_STATE.readerActivityLoadCount == 0;
+}
+
 void setup() {
   t1 = millis();
 
@@ -325,20 +342,21 @@ void setup() {
 
   setupDisplayAndFonts();
 
-  activityManager.goToBoot();
-
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
 
   if (recoveryFirmwareMode) {
+    activityManager.goToBoot();
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
         std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
   } else if (HalSystem::isRebootFromPanic()) {
+    activityManager.goToBoot();
     // If we rebooted from a panic, go to crash report screen to show the panic info
     activityManager.goToCrashReport();
-  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
+  } else if (!resumeReaderOnBoot) {
+    activityManager.goToBoot();
     // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
     // crashed (indicated by readerActivityLoadCount > 0)
     activityManager.goHome();
@@ -348,7 +366,8 @@ void setup() {
     APP_STATE.openEpubPath = "";
     APP_STATE.readerActivityLoadCount++;
     APP_STATE.saveToFile();
-    activityManager.goToReader(path);
+    display.suppressInitialFullRefresh();
+    activityManager.goToReader(path, readerResumeRefreshMode());
   }
 
   // Ensure we're not still holding the power button before leaving setup

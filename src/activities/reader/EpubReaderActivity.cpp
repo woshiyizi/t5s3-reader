@@ -53,6 +53,8 @@ void EpubReaderActivity::onEnter() {
     return;
   }
 
+  pagesUntilFullRefresh = ReaderUtils::initialPagesUntilFullRefresh(initialRefreshMode);
+
   // Configure screen orientation based on settings
   // NOTE: This affects layout math and must be applied before any render calls.
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);

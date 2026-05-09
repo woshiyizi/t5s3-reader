@@ -155,9 +155,11 @@ void ActivityManager::loop() {
         LOG_DBG("ACT", "Pushed to activity stack, new size = %zu", stackActivities.size());
       }
       const auto transitionAction = pendingAction;
+      const auto replaceRefreshMode = pendingReplaceRefreshMode;
       pendingAction = PendingAction::None;
+      pendingReplaceRefreshMode = HalDisplay::FULL_REFRESH;
       currentActivity = std::move(pendingActivity);
-      renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? HalDisplay::FULL_REFRESH
+      renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? replaceRefreshMode
                                                                              : HalDisplay::HALF_REFRESH);
 
       lock.unlock();  // onEnter may acquire its own lock
@@ -187,6 +189,12 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
+  replaceActivity(std::move(newActivity), HalDisplay::FULL_REFRESH);
+}
+
+void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,
+                                      const HalDisplay::RefreshMode replaceRefreshMode) {
+  pendingReplaceRefreshMode = replaceRefreshMode;
   // Note: no lock here, this is usually called by loop() and we may run into deadlock
   if (currentActivity) {
     // Defer launch if we're currently in an activity, to avoid deleting the current activity
@@ -224,8 +232,9 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToReader(std::string path) {
-  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path)));
+void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
+  replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
+                  replaceRefreshMode);
 }
 
 void ActivityManager::goToSleep() {

@@ -109,6 +109,10 @@ inline void markRefreshCycleDisplayed(int& pagesUntilFullRefresh) {
   (void)takeReaderRefreshMode(pagesUntilFullRefresh);
 }
 
+inline int initialPagesUntilFullRefresh(const HalDisplay::RefreshMode initialRefreshMode) {
+  return initialRefreshMode == HalDisplay::FULL_REFRESH ? 0 : SETTINGS.getRefreshFrequency();
+}
+
 // Grayscale anti-aliasing pass. The caller renders the BW page first,
 // captures it, renders gray planes, then updates the panel once.
 // Only the content callback is re-rendered; status bars stay in the captured

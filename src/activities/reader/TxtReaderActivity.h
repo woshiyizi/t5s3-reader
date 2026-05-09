@@ -9,6 +9,7 @@
 
 class TxtReaderActivity final : public Activity {
   std::unique_ptr<Txt> txt;
+  HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
 
   int currentPage = 0;
   int totalPages = 1;
@@ -42,8 +43,11 @@ class TxtReaderActivity final : public Activity {
   void loadProgress();
 
  public:
-  explicit TxtReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Txt> txt)
-      : Activity("TxtReader", renderer, mappedInput), txt(std::move(txt)) {}
+  explicit TxtReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Txt> txt,
+                             HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH)
+      : Activity("TxtReader", renderer, mappedInput),
+        txt(std::move(txt)),
+        initialRefreshMode(initialRefreshMode) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

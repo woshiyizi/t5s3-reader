@@ -29,6 +29,8 @@ void TxtReaderActivity::onEnter() {
     return;
   }
 
+  pagesUntilFullRefresh = ReaderUtils::initialPagesUntilFullRefresh(initialRefreshMode);
+
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
   txt->setupCacheDir();

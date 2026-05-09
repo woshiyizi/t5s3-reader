@@ -17,6 +17,7 @@ class EpubReaderActivity final : public Activity {
   // Set when navigating to a footnote href with a fragment (e.g. #note1).
   // Cleared on the next render after the new section loads and resolves it to a page.
   std::string pendingAnchor;
+  HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
   int pagesUntilFullRefresh = 0;
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
@@ -59,8 +60,11 @@ class EpubReaderActivity final : public Activity {
   void restoreSavedPosition();
 
  public:
-  explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Epub> epub)
-      : Activity("EpubReader", renderer, mappedInput), epub(std::move(epub)) {}
+  explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Epub> epub,
+                              HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH)
+      : Activity("EpubReader", renderer, mappedInput),
+        epub(std::move(epub)),
+        initialRefreshMode(initialRefreshMode) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

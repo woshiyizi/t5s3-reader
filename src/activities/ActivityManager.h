@@ -45,6 +45,7 @@ class ActivityManager {
   std::unique_ptr<Activity> pendingActivity;
   enum class PendingAction { None, Push, Pop, Replace };
   PendingAction pendingAction = PendingAction::None;
+  HalDisplay::RefreshMode pendingReplaceRefreshMode = HalDisplay::FULL_REFRESH;
 
   // Task to render and display the activity
   TaskHandle_t renderTaskHandle = nullptr;
@@ -77,6 +78,7 @@ class ActivityManager {
 
   // Will replace currentActivity and drop all activities on stack
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
+  void replaceActivity(std::unique_ptr<Activity>&& newActivity, HalDisplay::RefreshMode replaceRefreshMode);
 
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer();
@@ -84,7 +86,7 @@ class ActivityManager {
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
-  void goToReader(std::string path);
+  void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::FULL_REFRESH);
   void goToSleep();
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);

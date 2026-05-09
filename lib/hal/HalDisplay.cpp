@@ -616,6 +616,8 @@ void HalDisplay::requestNextRefresh(HalDisplay::RefreshMode mode) {
 
 void HalDisplay::requestNextDisplayEffect(const DisplayEffect effect) { pendingDisplayEffect = effect; }
 
+void HalDisplay::suppressInitialFullRefresh() { forceFullRefresh = false; }
+
 void HalDisplay::deepSleep() {
   if (gfx) {
     gfx->waitDisplay();

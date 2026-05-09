@@ -61,6 +61,7 @@ class HalDisplay {
   void refreshDisplay(RefreshMode mode = RefreshMode::FAST_REFRESH, bool turnOffScreen = false);
   void requestNextRefresh(RefreshMode mode = RefreshMode::HALF_REFRESH);
   void requestNextDisplayEffect(DisplayEffect effect = DisplayEffect::EFFECT_NONE);
+  void suppressInitialFullRefresh();
 
   // Power management
   void deepSleep();
