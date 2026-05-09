@@ -76,6 +76,10 @@ void TxtReaderActivity::loop() {
     return;
   }
 
+  if (ReaderUtils::isPageTurnInputBlocked()) {
+    return;
+  }
+
   if (prevTriggered && currentPage > 0) {
     currentPage--;
     ReaderUtils::requestPageTurnEffect(renderer, false);
@@ -94,6 +98,9 @@ void TxtReaderActivity::loop() {
 bool TxtReaderActivity::onTouchTap(int16_t x, int16_t) {
   const int width = renderer.getScreenWidth();
   if (x < width / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     if (currentPage > 0) {
       currentPage--;
       ReaderUtils::requestPageTurnEffect(renderer, false);
@@ -103,6 +110,9 @@ bool TxtReaderActivity::onTouchTap(int16_t x, int16_t) {
   }
 
   if (x > (width * 2) / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     if (currentPage < totalPages - 1) {
       currentPage++;
       ReaderUtils::requestPageTurnEffect(renderer, true);

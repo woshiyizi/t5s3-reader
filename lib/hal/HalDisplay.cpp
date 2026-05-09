@@ -19,9 +19,9 @@ constexpr uint32_t kEpdBusHz = 16000000;
 constexpr uint32_t kMiddleRefreshThreshold = 8;
 constexpr uint32_t kQualityRefreshThreshold = 18;
 constexpr int kDefaultVcomMv = -1600;
-constexpr int kReaderTurnStandardSliceCount = 32;
-constexpr int kReaderTurnFastSliceCount = 24;
-constexpr int kReaderTurnMinSliceHeight = 8;
+constexpr int kReaderTurnStandardSliceCount = 24;
+constexpr int kReaderTurnFastSliceCount = 30;
+constexpr int kReaderTurnMinSliceHeight = 6;
 
 constexpr uint8_t kTpsRegEnable = 0x01;
 constexpr uint8_t kTpsRegVcom = 0x03;
@@ -228,6 +228,8 @@ lgfx::epd_mode::epd_mode_t epdModeForRefreshMode(const HalDisplay::RefreshMode m
       return lgfx::epd_mode::epd_quality;
     case HalDisplay::HALF_REFRESH:
       return lgfx::epd_mode::epd_text;
+    case HalDisplay::BALANCED_REFRESH:
+      return lgfx::epd_mode::epd_fast;
     case HalDisplay::FAST_REFRESH:
     default:
       return lgfx::epd_mode::epd_fast;
@@ -489,22 +491,27 @@ void HalDisplay::pushPanelCanvasWithEffect(const DisplayEffect effect) const {
   }
 
   int preferredSliceCount = 0;
+  int slicesPerBatch = 1;
   bool reverse = false;
   switch (effect) {
     case EFFECT_READER_TURN_FORWARD_STANDARD:
       preferredSliceCount = kReaderTurnStandardSliceCount;
+      slicesPerBatch = 2;
       reverse = false;
       break;
     case EFFECT_READER_TURN_BACKWARD_STANDARD:
       preferredSliceCount = kReaderTurnStandardSliceCount;
+      slicesPerBatch = 2;
       reverse = true;
       break;
     case EFFECT_READER_TURN_FORWARD_FAST:
       preferredSliceCount = kReaderTurnFastSliceCount;
+      slicesPerBatch = 3;
       reverse = false;
       break;
     case EFFECT_READER_TURN_BACKWARD_FAST:
       preferredSliceCount = kReaderTurnFastSliceCount;
+      slicesPerBatch = 3;
       reverse = true;
       break;
     case EFFECT_NONE:
@@ -516,6 +523,7 @@ void HalDisplay::pushPanelCanvasWithEffect(const DisplayEffect effect) const {
   const int maxSliceCount = std::max(1, DISPLAY_HEIGHT / kReaderTurnMinSliceHeight);
   const int sliceCount = std::max(1, std::min(preferredSliceCount, maxSliceCount));
   const int sliceHeight = std::max(1, DISPLAY_HEIGHT / sliceCount);
+  const int batchSize = std::max(1, slicesPerBatch);
 
   // The panel canvas is stored in physical scan orientation (960x540).
   // Sweeping physical Y from low->high maps to logical right->left in portrait,
@@ -531,6 +539,9 @@ void HalDisplay::pushPanelCanvasWithEffect(const DisplayEffect effect) const {
 
     gfx->setClipRect(0, startRow, DISPLAY_WIDTH, currentSliceHeight);
     panelCanvas->pushSprite(gfx, 0, 0);
+    // if (((i + 1) % batchSize) == 0 || i == sliceCount - 1) {
+    //   gfx->waitDisplay();
+    // }
   }
   gfx->clearClipRect();
 }
@@ -556,7 +567,7 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
 
   renderBwToPanelCanvas();
 
-  if (forcedRefreshPending && mode == FAST_REFRESH) {
+  if (forcedRefreshPending && (mode == FAST_REFRESH || mode == BALANCED_REFRESH)) {
     LOG_DBG("DSP", "Forcing requested refresh mode for next display update");
     mode = forcedRefreshMode;
   }
@@ -571,6 +582,9 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
     refreshCycleCount = 0;
   } else if (mode == HALF_REFRESH) {
     epdMode = lgfx::epd_mode::epd_text;
+    refreshCycleCount = 0;
+  } else if (mode == BALANCED_REFRESH) {
+    epdMode = lgfx::epd_mode::epd_fast;
     refreshCycleCount = 0;
   } else {
     const bool useQualityMode = refreshCycleCount >= kQualityRefreshThreshold;

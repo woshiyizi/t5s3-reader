@@ -79,6 +79,10 @@ void XtcReaderActivity::loop() {
     return;
   }
 
+  if (ReaderUtils::isPageTurnInputBlocked()) {
+    return;
+  }
+
   // At end of the book, forward button goes home and back button returns to last page
   if (currentPage >= xtc->getPageCount()) {
     if (nextTriggered) {
@@ -117,6 +121,9 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
 
   const int width = renderer.getScreenWidth();
   if (x < width / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     if (currentPage > 0) {
       currentPage--;
       ReaderUtils::requestPageTurnEffect(renderer, false);
@@ -126,6 +133,9 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
   }
 
   if (x > (width * 2) / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     currentPage++;
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();

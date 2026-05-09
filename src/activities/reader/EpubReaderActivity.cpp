@@ -171,6 +171,10 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  if (ReaderUtils::isPageTurnInputBlocked()) {
+    return;
+  }
+
   // At end of the book, forward button goes home and back button returns to last page
   if (currentSpineIndex > 0 && currentSpineIndex >= epub->getSpineItemsCount()) {
     if (nextTriggered) {
@@ -236,12 +240,18 @@ bool EpubReaderActivity::onTouchTap(int16_t x, int16_t) {
 
   const int width = renderer.getScreenWidth();
   if (x < width / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     if (section) {
       pageTurn(false);
     } else {
       requestUpdate();
     }
   } else if (x > (width * 2) / 3) {
+    if (ReaderUtils::isPageTurnInputBlocked()) {
+      return true;
+    }
     if (section) {
       pageTurn(true);
     } else {
@@ -528,6 +538,10 @@ void EpubReaderActivity::toggleAutoPageTurn(const uint8_t selectedPageTurnOption
 }
 
 void EpubReaderActivity::pageTurn(bool isForwardTurn) {
+  if (ReaderUtils::isPageTurnInputBlocked()) {
+    return;
+  }
+
   if (isForwardTurn) {
     if (section->currentPage < section->pageCount - 1) {
       section->currentPage++;

@@ -5,6 +5,7 @@
 #include <HalTiltSensor.h>
 #include <Logging.h>
 
+#include "activities/RenderLock.h"
 #include "MappedInputManager.h"
 
 namespace ReaderUtils {
@@ -54,8 +55,9 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
 inline HalDisplay::RefreshMode getReaderDisplayRefreshMode() {
   switch (SETTINGS.readerDisplayMode) {
     case CrossPointSettings::READER_DISPLAY_FAST:
-    case CrossPointSettings::READER_DISPLAY_STANDARD:
       return HalDisplay::FAST_REFRESH;
+    case CrossPointSettings::READER_DISPLAY_STANDARD:
+      return HalDisplay::BALANCED_REFRESH;
     case CrossPointSettings::READER_DISPLAY_QUALITY:
     default:
       return HalDisplay::HALF_REFRESH;
@@ -64,6 +66,12 @@ inline HalDisplay::RefreshMode getReaderDisplayRefreshMode() {
 
 inline bool shouldAnimatePageTurn() {
   return SETTINGS.readerDisplayMode != CrossPointSettings::READER_DISPLAY_QUALITY;
+}
+
+inline bool isPageTurnInputBlocked() {
+  // Keep page-turn input from stacking while the current reader update or
+  // page-turn effect is still being pushed to the panel.
+  return RenderLock::peek();
 }
 
 inline void requestPageTurnEffect(const GfxRenderer& renderer, const bool isForwardTurn) {
