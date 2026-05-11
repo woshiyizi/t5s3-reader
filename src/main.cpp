@@ -130,6 +130,7 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
 unsigned long t2 = 0;
+constexpr unsigned long kBootConfirmHoldMs = 700;
 constexpr unsigned long kPcaButtonPowerOffHoldMs = 2000;
 
 void renderPowerOffScreen(const char* status) {
@@ -461,12 +462,40 @@ void loop() {
     screenshotButtonsReleased = true;
   }
 
-  static bool confirmPowerOffHandled = false;
-  if (!gpio.isPressed(HalGPIO::BTN_CONFIRM)) {
-    confirmPowerOffHandled = false;
-  } else if (!confirmPowerOffHandled && gpio.getHeldTime() >= kPcaButtonPowerOffHoldMs) {
+  bool hasHardwareButtonTap = false;
+  auto hardwareButtonTap = MappedInputManager::Button::Up;
+  auto queueHardwareButtonTap = [&](const MappedInputManager::Button button) {
+    if (!hasHardwareButtonTap) {
+      hardwareButtonTap = button;
+      hasHardwareButtonTap = true;
+    }
+  };
+
+  static bool bootLongConfirmHandled = false;
+  if (gpio.isPressed(HalGPIO::BTN_POWER)) {
+    if (!bootLongConfirmHandled && gpio.getHeldTime() >= kBootConfirmHoldMs) {
+      LOG_DBG("MAIN", "BOOT long press mapped to Confirm");
+      bootLongConfirmHandled = true;
+      queueHardwareButtonTap(MappedInputManager::Button::Confirm);
+    }
+  } else {
+    if (gpio.wasReleased(HalGPIO::BTN_POWER) && !bootLongConfirmHandled) {
+      LOG_DBG("MAIN", "BOOT short press mapped to Up");
+      queueHardwareButtonTap(MappedInputManager::Button::Up);
+    }
+    bootLongConfirmHandled = false;
+  }
+
+  static bool pcaPowerOffHandled = false;
+  if (!gpio.isPressed(HalGPIO::BTN_PCA)) {
+    if (gpio.wasReleased(HalGPIO::BTN_PCA) && !pcaPowerOffHandled) {
+      LOG_DBG("MAIN", "PCA9535 button short press mapped to Down");
+      queueHardwareButtonTap(MappedInputManager::Button::Down);
+    }
+    pcaPowerOffHandled = false;
+  } else if (!pcaPowerOffHandled && gpio.getHeldTime() >= kPcaButtonPowerOffHoldMs) {
     LOG_DBG("MAIN", "PCA9535 button long press BQ25896 shutdown request");
-    confirmPowerOffHandled = true;
+    pcaPowerOffHandled = true;
     renderPowerOffScreen("Shutting down...");
     if (BoardT5S3::shutdownBatteryPower()) {
       delay(1500);
@@ -499,12 +528,6 @@ void loop() {
   //   return;
   // }
 
-  if (mappedInputManager.wasReleased(MappedInputManager::Button::Power) && !gpio.wasReleased(HalGPIO::BTN_DOWN)) {
-    LOG_DBG("MAIN", "Power button short press sleep request");
-    enterDeepSleep();
-    return;
-  }
-
   // Refresh the battery icon when USB is plugged or unplugged.
   // Placed after sleep guards so we never queue a render that won't be processed.
   if (gpio.wasUsbStateChanged()) {
@@ -512,7 +535,13 @@ void loop() {
   }
 
   const unsigned long activityStartTime = millis();
+  if (hasHardwareButtonTap) {
+    mappedInputManager.injectButtonTap(hardwareButtonTap);
+  }
   activityManager.loop();
+  if (hasHardwareButtonTap) {
+    mappedInputManager.clearInjectedButtonTap();
+  }
   const unsigned long activityDuration = millis() - activityStartTime;
 
   const unsigned long loopDuration = millis() - loopStartTime;

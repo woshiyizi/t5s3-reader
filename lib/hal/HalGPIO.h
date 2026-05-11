@@ -78,6 +78,7 @@ class HalGPIO {
   static constexpr uint8_t BTN_UP = 4;
   static constexpr uint8_t BTN_DOWN = 5;
   static constexpr uint8_t BTN_POWER = 6;
+  static constexpr uint8_t BTN_PCA = 7;
 
  private:
   static constexpr unsigned long DEBOUNCE_DELAY = 5;

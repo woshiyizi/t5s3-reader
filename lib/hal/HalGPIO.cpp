@@ -83,7 +83,7 @@ uint8_t HalGPIO::getState() {
   uint8_t state = 0;
 
   if (BoardT5S3::readButton()) {
-    state |= buttonBit(BTN_CONFIRM);
+    state |= buttonBit(BTN_PCA);
   }
   if (digitalRead(T5S3_BOOT_BTN) == LOW) {
     state |= buttonBit(BTN_POWER);
