@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <BoardT5S3.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
@@ -128,7 +129,7 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
 unsigned long t2 = 0;
-constexpr unsigned long kConfirmPowerOffHoldMs = 2000;
+constexpr unsigned long kPcaButtonPowerOffHoldMs = 2000;
 
 // Verify power button press duration on wake-up from deep sleep
 // Pre-condition: isWakeupByPowerButton() == true
@@ -436,9 +437,15 @@ void loop() {
   static bool confirmPowerOffHandled = false;
   if (!gpio.isPressed(HalGPIO::BTN_CONFIRM)) {
     confirmPowerOffHandled = false;
-  } else if (!confirmPowerOffHandled && gpio.getHeldTime() >= kConfirmPowerOffHoldMs) {
-    LOG_DBG("MAIN", "Front button long press power-off request");
+  } else if (!confirmPowerOffHandled && gpio.getHeldTime() >= kPcaButtonPowerOffHoldMs) {
+    LOG_DBG("MAIN", "PCA9535 button long press BQ25896 shutdown request");
     confirmPowerOffHandled = true;
+    if (BoardT5S3::shutdownBatteryPower()) {
+      delay(2500);
+      LOG_DBG("MAIN", "BQ25896 shutdown returned but device is still running; falling back to deep sleep");
+    } else {
+      LOG_ERR("MAIN", "BQ25896 shutdown failed or rejected; falling back to deep sleep");
+    }
     enterDeepSleep();
     return;
   }

@@ -10,6 +10,7 @@ HalPowerManager powerManager;  // Singleton instance
 
 void HalPowerManager::begin() {
   BoardT5S3::beginI2C();
+  BoardT5S3::beginBatteryManagement();
   normalFreq = getCpuFrequencyMhz();
   modeMutex = xSemaphoreCreateMutex();
   assert(modeMutex != nullptr);
