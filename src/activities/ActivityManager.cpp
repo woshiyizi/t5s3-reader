@@ -275,6 +275,11 @@ bool ActivityManager::preventAutoSleep() const { return currentActivity && curre
 
 bool ActivityManager::isReaderActivity() const { return currentActivity && currentActivity->isReaderActivity(); }
 
+bool ActivityManager::isReaderPageActivity() const {
+  return currentActivity && (currentActivity->name == "EpubReader" || currentActivity->name == "TxtReader" ||
+                             currentActivity->name == "XtcReader");
+}
+
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }
 
 ScreenshotInfo ActivityManager::getScreenshotInfo() const {

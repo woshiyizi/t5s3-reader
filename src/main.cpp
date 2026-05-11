@@ -470,6 +470,7 @@ void loop() {
       hasHardwareButtonTap = true;
     }
   };
+  const bool isReaderPage = activityManager.isReaderPageActivity();
 
   static bool bootLongConfirmHandled = false;
   if (gpio.isPressed(HalGPIO::BTN_POWER)) {
@@ -480,8 +481,8 @@ void loop() {
     }
   } else {
     if (gpio.wasReleased(HalGPIO::BTN_POWER) && !bootLongConfirmHandled) {
-      LOG_DBG("MAIN", "BOOT short press mapped to Up");
-      queueHardwareButtonTap(MappedInputManager::Button::Up);
+      LOG_DBG("MAIN", "BOOT short press mapped to %s", isReaderPage ? "PageBack" : "Up");
+      queueHardwareButtonTap(isReaderPage ? MappedInputManager::Button::PageBack : MappedInputManager::Button::Up);
     }
     bootLongConfirmHandled = false;
   }
@@ -489,8 +490,8 @@ void loop() {
   static bool pcaPowerOffHandled = false;
   if (!gpio.isPressed(HalGPIO::BTN_PCA)) {
     if (gpio.wasReleased(HalGPIO::BTN_PCA) && !pcaPowerOffHandled) {
-      LOG_DBG("MAIN", "PCA9535 button short press mapped to Down");
-      queueHardwareButtonTap(MappedInputManager::Button::Down);
+      LOG_DBG("MAIN", "PCA9535 button short press mapped to %s", isReaderPage ? "PageForward" : "Down");
+      queueHardwareButtonTap(isReaderPage ? MappedInputManager::Button::PageForward : MappedInputManager::Button::Down);
     }
     pcaPowerOffHandled = false;
   } else if (!pcaPowerOffHandled && gpio.getHeldTime() >= kPcaButtonPowerOffHoldMs) {
