@@ -144,7 +144,7 @@ void renderPowerOffScreen(const char* status) {
   renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 40, "CrossPoint", true, EpdFontFamily::BOLD);
   renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 72, status, true, EpdFontFamily::BOLD);
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 102, "Hold PWR to power on");
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 }
 
 // Verify power button press duration on wake-up from deep sleep
@@ -394,20 +394,24 @@ void setup() {
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
+  const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
+    display.suppressInitialFullRefresh();
+    renderer.requestNextRefresh(refreshMode);
+  };
 
   if (recoveryFirmwareMode) {
-    activityManager.goToBoot();
-    // Skip normal home/reader routing: jump straight into the SD firmware picker.
+    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
+    // Skip the boot splash and jump straight into the SD firmware picker.
     activityManager.replaceActivity(
-        std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
+        std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true),
+        HalDisplay::HALF_REFRESH);
   } else if (HalSystem::isRebootFromPanic()) {
-    activityManager.goToBoot();
-    // If we rebooted from a panic, go to crash report screen to show the panic info
+    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
+    // If we rebooted from a panic, go directly to the crash report screen to show the panic info.
     activityManager.goToCrashReport();
   } else if (!resumeReaderOnBoot) {
-    activityManager.goToBoot();
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
+    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
+    // Boot directly to home screen to avoid a full-refresh boot splash before the main page.
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
