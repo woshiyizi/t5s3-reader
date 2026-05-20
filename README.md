@@ -1,197 +1,217 @@
-# CrossPoint Reader
+# T5S3 Reader
 
-Firmware for the **Xteink X4** e-paper display reader (unaffiliated with Xteink).
-Built using **PlatformIO** and targeting the **ESP32-C3** microcontroller.
+[![PlatformIO Build](https://github.com/ShallowGreen123/t5s3-reader/actions/workflows/platformio-build.yml/badge.svg)](https://github.com/ShallowGreen123/t5s3-reader/actions/workflows/platformio-build.yml)
 
-CrossPoint Reader is a purpose-built firmware designed to be a drop-in, fully open-source replacement for the official 
-Xteink firmware. It aims to match or improve upon the standard EPUB reading experience.
+English | [中文](README_CN.md)
 
-![](./docs/images/cover.jpg)
+Firmware for the **LilyGo T5 ePaper S3 / T5S3 4.7-inch e-paper device**.
 
-## Motivation
+This project is adapted from CrossPoint Reader and focuses on the LilyGo T5S3 hardware. It includes practical fixes and optimizations for EPUB images, TXT loading speed, low-power shutdown, startup refresh behavior, and general e-paper reading.
 
-E-paper devices are fantastic for reading, but most commercially available readers are closed systems with limited 
-customisation. The **Xteink X4** is an affordable, e-paper device, however the official firmware remains closed.
-CrossPoint exists partly as a fun side-project and partly to open up the ecosystem and truly unlock the device's
-potential.
+## Thanks
 
-CrossPoint Reader aims to:
-* Provide a **fully open-source alternative** to the official firmware.
-* Offer a **document reader** capable of handling EPUB content on constrained hardware.
-* Support **customisable font, layout, and display** options.
-* Run purely on the **Xteink X4 hardware**.
+Special thanks to [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader). This firmware keeps and builds on CrossPoint's activity-based UI architecture, reader logic, settings system, SD-card cache, web file transfer, and many other foundations.
 
-This project is **not affiliated with Xteink**; it's built as a community project.
+This repository is not the official CrossPoint project and is not affiliated with LilyGo. It is an adaptation and experimental firmware for T5S3 devices.
 
-## Features & Usage
+## Target Device
 
-- [x] EPUB parsing and rendering (EPUB 2 and EPUB 3)
-- [x] Image support within EPUB
-- [x] Saved reading position
-- [x] File explorer with file picker
-  - [x] Basic EPUB picker from root directory
-  - [x] Support nested folders
-  - [ ] EPUB picker with cover art
-- [x] Custom sleep screen
-  - [x] Cover sleep screen
-- [x] Wifi book upload
-- [x] Wifi OTA updates
-- [x] KOReader Sync integration for cross-device reading progress
-- [x] Configurable font, layout, and display options
-  - [ ] User provided fonts
-  - [ ] Full UTF support
-- [x] Screen rotation
+- **Device**: [LilyGo T5 ePaper S3](https://github.com/Xinyuan-LilyGO/T5S3-4.7-e-paper-PRO)
+- **MCU**: ESP32-S3
+- **Display**: 4.7-inch e-paper, 960 x 540 physical resolution, 540 x 960 default portrait logical resolution
+- **Storage**: microSD card for books, cache, settings, and screenshots
+- **Input**: front buttons, side buttons, power button, reset button, and touch screen
 
-Multi-language support: Read EPUBs in various languages, including English, Spanish, French, German, Italian, Portuguese, Russian, Ukrainian, Polish, Swedish, Norwegian, [and more](./USER_GUIDE.md#supported-languages).
+The PlatformIO environment is `default`, and the board definition is `T5-ePaper-S3`.
 
-See [the user guide](./USER_GUIDE.md) for instructions on operating CrossPoint, including the
-[KOReader Sync quick setup](./USER_GUIDE.md#365-koreader-sync-quick-setup).
+## Features
 
-For more details about the scope of the project, see the [SCOPE.md](SCOPE.md) document.
+- EPUB reading with chapter parsing, layout, saved progress, and image support.
+- TXT / Markdown reading.
+- XTC reading.
+- BMP image viewer.
+- Recent books, file browser, reading cache, cover images, and sleep screen images.
+- Wi-Fi file upload and web-based file management.
+- Configurable fonts, font size, line spacing, margins, orientation, and refresh mode.
+- Auto power-off after long inactivity when USB is not connected.
+- Reader screenshots saved to the SD card under `screenshots/`.
 
-## Installing
+## Requirements
 
-### Web (latest firmware)
+- LilyGo T5 ePaper S3 device
+- microSD card
+- USB-C data cable
+- Python 3
+- PlatformIO Core, or VS Code with the PlatformIO extension
 
-1. Connect your Xteink X4 to your computer via USB-C and wake/unlock the device
-2. Go to https://xteink.dve.al/ and click "Flash CrossPoint firmware"
+Install PlatformIO Core:
 
-To revert back to the official firmware, you can flash the latest official firmware from https://xteink.dve.al/, or swap
-back to the other partition using the "Swap boot partition" button here https://xteink.dve.al/debug.
-
-### Web (specific firmware version)
-
-1. Connect your Xteink X4 to your computer via USB-C
-2. Download the `firmware.bin` file from the release of your choice via the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases)
-3. Go to https://xteink.dve.al/ and flash the firmware file using the "OTA fast flash controls" section
-
-To revert back to the official firmware, you can flash the latest official firmware from https://xteink.dve.al/, or swap
-back to the other partition using the "Swap boot partition" button here https://xteink.dve.al/debug.
-
-### Command line (specific firmware version)
-
-1. Install [`esptool`](https://github.com/espressif/esptool) :
 ```bash
-pip install esptool
+python -m pip install platformio==6.1.19
 ```
-2. Download the `firmware.bin` file from the release of your choice via the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases)
-3. Connect your Xteink X4 to your computer via USB-C.
-4. Note the device location. On Linux, run `dmesg` after connecting. On MacOS, run :
+
+Clone the repository and enter the project directory:
+
 ```bash
-log stream --predicate 'subsystem == "com.apple.iokit"' --info
+git clone <repository-url>
+cd z-T5S3-Reader
 ```
-5. Flash the firmware :
+
+## Download Firmware To The Device
+
+### Option 1: LILYGO Spark, Recommended
+
+1. Download and open [LILYGO Spark](https://lilygo.cc/en-us/pages/lilygo-spark?srsltid=AfmBOoorTB7ptFu2LQNLRnoI2SA0zBGJTN6JpI9J3hmHEkKhBQSmeu0Y).
+2. Search for your device and install the `corsspoint_lilygo_t5s3_e_paper` firmware.
+
+![LILYGO Spark firmware](./docs/README_img/lilygo_spark.png)
+
+### Option 2: PlatformIO
+
+1. Connect the device to your computer with USB-C.
+2. Build the firmware:
+
 ```bash
-esptool.py --chip esp32c3 --port /dev/ttyACM0 --baud 921600 write_flash 0x10000 /path/to/firmware.bin
-```
-Change `/dev/ttyACM0` to the device for your system.
-
-### Manual
-
-See [Development](#development) below.
-
-## Development
-
-### Prerequisites
-
-* **PlatformIO Core** (`pio`) or **VS Code + PlatformIO IDE**
-* Python 3.8+
-* USB-C cable for flashing the ESP32-C3
-* Xteink X4
-
-### Checking out the code
-
-CrossPoint uses PlatformIO for building and flashing the firmware. To get started, clone the repository:
-
-```
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-
-# Or, if you've already cloned without --recursive:
-git submodule update --init --recursive
+pio run -e default
 ```
 
-### Flashing your device
+3. Upload it to the device:
 
-Connect your Xteink X4 to your computer via USB-C and run the following command.
-
-```sh
-pio run --target upload
-```
-### Debugging
-
-After flashing the new features, it’s recommended to capture detailed logs from the serial port.
-
-First, make sure all required Python packages are installed:
-
-```python
-python3 -m pip install pyserial colorama matplotlib
-```
-after that run the script:
-```sh
-# For Linux
-# This was tested on Debian and should work on most Linux systems.
-python3 scripts/debugging_monitor.py
-
-# For macOS
-python3 scripts/debugging_monitor.py /dev/cu.usbmodem2101
-```
-Minor adjustments may be required for Windows.
-
-## Internals
-
-CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only
-has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based
-on this constraint.
-
-### Data caching
-
-The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the 
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
-
-
-```
-.crosspoint/
-├── epub_12471232/       # Each EPUB is cached to a subdirectory named `epub_<hash>`
-│   ├── progress.bin     # Stores reading progress (chapter, page, etc.)
-│   ├── cover.bmp        # Book cover image (once generated)
-│   ├── book.bin         # Book metadata (title, author, spine, table of contents, etc.)
-│   └── sections/        # All chapter data is stored in the sections subdirectory
-│       ├── 0.bin        # Chapter data (screen count, all text layout info, etc.)
-│       ├── 1.bin        #     files are named by their index in the spine
-│       └── ...
-│
-└── epub_189013891/
+```bash
+pio run -e default -t upload
 ```
 
-Deleting the `.crosspoint` directory will clear the entire cache. 
+4. If upload mode is not detected, hold the BOOT button and press RESET, or hold BOOT while reconnecting USB, then run the upload command again.
 
-Due the way it's currently implemented, the cache is not automatically cleared when a book is deleted and moving a book
-file will use a new cache directory, resetting the reading progress.
+5. Open the serial monitor if logs are needed:
 
-For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
+```bash
+pio device monitor -b 115200
+```
 
-## Contributing
+### Option 3: esptool
 
-Contributions are very welcome!
+Install esptool:
 
-If you are new to the codebase, start with the [contributing docs](./docs/contributing/README.md).
+```bash
+python -m pip install esptool
+```
 
-If you're looking for a way to help out, take a look at the [ideas discussion board](https://github.com/crosspoint-reader/crosspoint-reader/discussions/categories/ideas).
-If there's something there you'd like to work on, leave a comment so that we can avoid duplicated effort.
+After building, the firmware is located at:
 
-Everyone here is a volunteer, so please be respectful and patient. For more details on our governance and community 
-principles, please see [GOVERNANCE.md](GOVERNANCE.md).
+```text
+.pio/build/default/firmware.bin
+```
 
-### To submit a contribution:
+Flash only the application firmware:
 
-1. Fork the repo
-2. Create a branch (`feature/dithering-improvement`)
-3. Make changes
-4. Submit a PR
+```bash
+esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash 0x10000 .pio/build/default/firmware.bin
+```
 
----
+For a blank device or a full restore, flash bootloader, partition table, and firmware:
 
-CrossPoint Reader is **not affiliated with Xteink or any manufacturer of the X4 hardware**.
+```bash
+esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash \
+  0x0000 .pio/build/default/bootloader.bin \
+  0x8000 .pio/build/default/partitions.bin \
+  0x10000 .pio/build/default/firmware.bin
+```
 
-Huge shoutout to [**diy-esp32-epub-reader** by atomic14](https://github.com/atomic14/diy-esp32-epub-reader), which was a project I took a lot of inspiration from as I
-was making CrossPoint.
+Replace `COMx` with your serial port, such as `COM5` on Windows, `/dev/ttyACM0` on Linux, or `/dev/cu.usbmodem*` on macOS.
+
+## SD Card And Books
+
+Put books directly in the SD card root directory, or organize them into folders.
+
+Recommended layout:
+
+```text
+/
+  Books/
+    book.epub
+    novel.txt
+  .sleep/
+    sleep.bmp
+```
+
+The firmware creates a `.crosspoint/` directory on the SD card for settings, reading progress, cache, and cover thumbnails. If cache corruption or repeated crashes occur, back up the SD card and delete `.crosspoint/` to let the firmware regenerate it.
+
+## Device Operation
+
+### Basic Buttons
+
+| Button | Function |
+| --- | --- |
+| BOOT | Short press: previous item / previous page |
+| IO48 | Short press: next item / next page |
+| BOOT | Long press: confirm / open |
+| IO48 | Long press: power off |
+| PWR | Turn on device power |
+| RTS | Reset |
+| HOME | Return to home screen |
+
+### Power
+
+- Long press `PWR` to turn on the device.
+- Long press `IO48` to power off.
+- When there is no activity for a long time and USB is not connected, the device enters power-off / low-power state automatically.
+- If the device stops responding, press RESET and then long press the power button again.
+
+### Home Screen
+
+The home screen provides:
+
+- Continue Reading: reopen the most recent book.
+- Browse Files: browse files on the SD card.
+- Recent Books: view recently opened books.
+- File Transfer: upload books over Wi-Fi.
+- Settings: configure the device.
+
+Use Left/Right or Up/Down to move, Confirm to open, and Back to return.
+
+### File Browser
+
+- Left / Up: move up.
+- Right / Down: move down.
+- Confirm: open a file or folder.
+- Back: go to the parent folder or return home.
+- Long press Confirm: delete the selected file after confirmation.
+
+### Reading
+
+- Right or Down: next page.
+- Left or Up: previous page.
+- Confirm: open the reader menu.
+- Back: exit reading and return home.
+- Long press Back: exit reading and return to the file browser.
+- Long press page keys: chapter skip or other configured long-press behavior.
+- Power + Down: take a screenshot and save it under `screenshots/` on the SD card.
+
+### Wi-Fi Book Upload
+
+1. Open `File Transfer` from the home screen.
+2. Select and connect to Wi-Fi.
+3. The device displays a web address.
+4. Open the address in a browser on your computer or phone.
+5. Upload EPUB, TXT, or other supported files to the SD card.
+6. Press Back on the device to exit file transfer mode.
+
+## Common Settings
+
+In `Settings`, you can configure:
+
+- Font, font size, line spacing, and page margins.
+- Reading orientation: portrait, landscape, inverted, and more.
+- Refresh mode: quality, balanced, or fast.
+- EPUB image rendering: show images, placeholders, or hide images.
+- Sleep / power-off timeout.
+- Sleep screen: default image, blank screen, custom BMP, or book cover.
+- Button mapping.
+- Wi-Fi networks.
+
+## Notes
+
+This firmware is still being tuned. E-paper refresh, image decoding, large TXT loading, power consumption, and battery reporting can vary with hardware state. If something goes wrong, please provide serial logs, reproduction files, and exact steps when possible.
+
+Thanks again to CrossPoint Reader and all related open-source library authors.
