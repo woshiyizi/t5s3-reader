@@ -24,7 +24,7 @@
 - **存储**：microSD 卡，用于放置电子书、缓存、设置和截图
 - **输入**：前排按键、侧边按键、电源键、复位键、触摸屏
 
-PlatformIO 环境名为 `default`，板卡定义为 `T5-ePaper-S3`。
+![](./docs/README_img/t5s3.png)
 
 ## 功能
 
