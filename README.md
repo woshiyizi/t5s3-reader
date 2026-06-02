@@ -200,6 +200,7 @@ Use Left/Right or Up/Down to move, Confirm to open, and Back to return.
 
 In `Settings`, you can configure:
 
+- Backlight level from 0 to 10. `0` turns it off, the default is `2`, and it turns off automatically during sleep/power-off.
 - Font, font size, line spacing, and page margins.
 - Reading orientation: portrait, landscape, inverted, and more.
 - Refresh mode: quality, balanced, or fast.

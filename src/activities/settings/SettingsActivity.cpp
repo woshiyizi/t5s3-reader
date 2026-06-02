@@ -1,5 +1,6 @@
 #include "SettingsActivity.h"
 
+#include <BoardT5S3.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 
@@ -209,6 +210,10 @@ void SettingsActivity::toggleCurrentSetting() {
     return;  // Results will be handled in the result handler, so we can return early here
   } else {
     return;
+  }
+
+  if (setting.valuePtr == &CrossPointSettings::backlightLevel) {
+    BoardT5S3::setBacklightLevel(SETTINGS.backlightLevel);
   }
 
   SETTINGS.saveToFile();

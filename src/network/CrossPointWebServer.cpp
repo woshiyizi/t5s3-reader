@@ -1,6 +1,7 @@
 #include "CrossPointWebServer.h"
 
 #include <ArduinoJson.h>
+#include <BoardT5S3.h>
 #include <Epub.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -1281,6 +1282,7 @@ void CrossPointWebServer::handlePostSettings() {
 
   const auto& settings = getSettingsList();
   int applied = 0;
+  bool backlightChanged = false;
 
   for (const auto& s : settings) {
     if (!s.key) continue;
@@ -1312,6 +1314,9 @@ void CrossPointWebServer::handlePostSettings() {
         if (val >= s.valueRange.min && val <= s.valueRange.max) {
           if (s.valuePtr) {
             SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+            if (s.valuePtr == &CrossPointSettings::backlightLevel) {
+              backlightChanged = true;
+            }
           }
           applied++;
         }
@@ -1332,6 +1337,10 @@ void CrossPointWebServer::handlePostSettings() {
       default:
         break;
     }
+  }
+
+  if (backlightChanged) {
+    BoardT5S3::setBacklightLevel(SETTINGS.backlightLevel);
   }
 
   SETTINGS.saveToFile();

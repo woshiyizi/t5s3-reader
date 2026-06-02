@@ -12,6 +12,9 @@ namespace {
 constexpr uint8_t PCA_REG_INPUT0 = 0x00;
 constexpr uint8_t PCA_REG_OUTPUT0 = 0x02;
 constexpr uint8_t PCA_REG_CONFIG0 = 0x06;
+constexpr uint8_t kBacklightPwmChannel = 0;
+constexpr uint8_t kBacklightPwmResolutionBits = 8;
+constexpr uint32_t kBacklightPwmFrequencyHz = 5000;
 
 constexpr BatteryProfile kBatteryProfile = {
     .inputLimitMa = 1000,
@@ -31,6 +34,7 @@ bool bq27220Ready = false;
 bq25896_hal_esp_idf_ctx_t bq25896HalCtx = {};
 bq25896_t bq25896 = {};
 BQ27220 bq27220;
+bool backlightInitialized = false;
 
 constexpr uint16_t GT911_PRODUCT_ID_REG = 0x8140;
 constexpr uint16_t GT911_STATUS_REG = 0x814E;
@@ -95,6 +99,19 @@ bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
 i2c_master_bus_handle_t i2cMasterBusHandle() { return reinterpret_cast<i2c_master_bus_handle_t>(&Wire); }
 
 bool applyBq25896Step(bq25896_err_t err) { return BQ25896_SUCCEEDED(err); }
+
+uint8_t backlightDutyForLevel(uint8_t level) {
+  if (level == 0) {
+    return 0;
+  }
+  if (level > 10) {
+    level = 10;
+  }
+
+  const uint32_t levelSquared = static_cast<uint32_t>(level) * static_cast<uint32_t>(level);
+  const uint32_t duty = (levelSquared * 255U + 50U) / 100U;
+  return static_cast<uint8_t>(duty > 255U ? 255U : duty);
+}
 
 bool configureBq25896() {
   bq25896_config_t config = {};
@@ -170,6 +187,24 @@ void beginI2C() {
   Wire.setTimeOut(50);
 }
 
+void initBacklight() {
+  if (backlightInitialized) {
+    return;
+  }
+
+  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
+  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
+  backlightInitialized = true;
+  ledcWrite(kBacklightPwmChannel, 0);
+}
+
+void setBacklightLevel(uint8_t level) {
+  if (!backlightInitialized) {
+    initBacklight();
+  }
+  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
+}
+
 void prepareSdBus() {
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
@@ -194,6 +229,8 @@ void disableGpsLora() {
 
 void begin() {
   beginI2C();
+  initBacklight();
+  setBacklightLevel(0);
 
   pinMode(T5S3_BOOT_BTN, INPUT_PULLUP);
   if (T5S3_PCA9535_INT > 0) {
@@ -205,6 +242,9 @@ void begin() {
 }
 
 void deinitForSleep() {
+  setBacklightLevel(0);
+  pinMode(T5S3_BL_EN, OUTPUT);
+  digitalWrite(T5S3_BL_EN, LOW);
   disableGpsLora();
   pinMode(T5S3_SD_CS, INPUT);
   pinMode(T5S3_GPS_RXD, INPUT);

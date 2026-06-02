@@ -16,6 +16,8 @@ inline const std::vector<SettingInfo>& getSettingsList() {
   static const std::vector<SettingInfo> list = [] {
     std::vector<SettingInfo> v = {
         // --- Display ---
+        SettingInfo::Value(StrId::STR_BACKLIGHT, &CrossPointSettings::backlightLevel, {0, 10, 1}, "backlightLevel",
+                           StrId::STR_CAT_DISPLAY),
         SettingInfo::Enum(StrId::STR_SLEEP_SCREEN, &CrossPointSettings::sleepScreen,
                           {StrId::STR_DARK, StrId::STR_LIGHT, StrId::STR_CUSTOM, StrId::STR_COVER, StrId::STR_NONE_OPT,
                            StrId::STR_COVER_CUSTOM},

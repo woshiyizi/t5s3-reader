@@ -219,6 +219,7 @@ void enterDeepSleep() {
   APP_STATE.saveToFile();
 
   activityManager.goToSleep();
+  BoardT5S3::setBacklightLevel(0);
 
   halTiltSensor.deepSleep();
   display.deepSleep();
@@ -232,6 +233,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
   APP_STATE.saveToFile();
 
+  BoardT5S3::setBacklightLevel(0);
   halTiltSensor.deepSleep();
   display.deepSleep();
   LOG_DBG("MAIN", "Entering deep sleep with current screen preserved, wakeOnTouch=%d", wakeOnTouch ? 1 : 0);
@@ -247,11 +249,13 @@ void enterPowerOffKeepingScreen(const char* status) {
     display.deepSleep();
 
     renderPowerOffScreen(status);
+    BoardT5S3::setBacklightLevel(0);
     if (BoardT5S3::shutdownBatteryPower()) {
       delay(1500);
       LOG_DBG("MAIN", "BQ25896 shutdown returned but device is still running; falling back to deep sleep");
     } else {
       renderPowerOffScreen("Entering sleep mode...");
+      BoardT5S3::setBacklightLevel(0);
       LOG_ERR("MAIN", "BQ25896 shutdown failed or rejected; falling back to deep sleep");
     }
   }
@@ -366,6 +370,8 @@ void setup() {
     default:
       break;
   }
+
+  BoardT5S3::setBacklightLevel(SETTINGS.backlightLevel);
 
   // Recovery firmware mode: hold left side button (BTN_UP) together with the power button at
   // boot to skip directly to the SD-card firmware update screen. Useful on devices where USB

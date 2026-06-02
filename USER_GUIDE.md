@@ -119,6 +119,11 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 #### 3.6.1 Display
 
+- **Backlight**: Set the front-light level from 0 to 10:
+  - `0` - Turn the backlight off
+  - `2` (default) - Turn the backlight on at a dim reading level
+  - `10` - Maximum brightness
+  - The backlight turns off automatically when the device sleeps or powers off, and restores the saved level on wake/boot
 - **Sleep Screen**: Which sleep screen to display when the device sleeps:
   - "Dark" (default) - The default dark Crosspoint logo sleep screen
   - "Light" - The same default sleep screen, on a white background
