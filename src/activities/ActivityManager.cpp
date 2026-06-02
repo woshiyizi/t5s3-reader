@@ -18,7 +18,7 @@
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
-              8192,              // Stack size
+              12288,             // Stack size
               this,              // Parameters
               1,                 // Priority
               &renderTaskHandle  // Task handle

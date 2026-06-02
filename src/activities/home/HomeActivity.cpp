@@ -196,6 +196,13 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  // Keep SD/EPUB thumbnail work out of the render task; it can be slow enough to stress the render mutex/stack.
+  if (firstRenderDone && !recentsLoaded && !recentsLoading) {
+    loadRecentCovers(UITheme::getInstance().getMetrics().homeCoverHeight);
+    requestUpdate();
+    return;
+  }
+
   const int menuCount = getMenuItemCount();
 
   buttonNavigator.onNext([this, menuCount] {
@@ -292,12 +299,6 @@ void HomeActivity::render(RenderLock&&) {
 
   if (!firstRenderDone) {
     firstRenderDone = true;
-    if (!recentsLoaded) {
-      requestUpdate();
-    }
-  } else if (!recentsLoaded && !recentsLoading) {
-    recentsLoading = true;
-    loadRecentCovers(metrics.homeCoverHeight);
   }
 }
 
