@@ -61,6 +61,17 @@ void applyLegacyFrontButtonLayout(CrossPointSettings& settings) {
   }
 }
 
+void migrateLegacyOpenDyslexicSelection(CrossPointSettings& settings) {
+  if (settings.sdFontFamilyName[0] != '\0') {
+    return;
+  }
+  if (settings.fontFamily == CrossPointSettings::OPENDYSLEXIC) {
+    strncpy(settings.sdFontFamilyName, "OpenDyslexic", sizeof(settings.sdFontFamilyName) - 1);
+    settings.sdFontFamilyName[sizeof(settings.sdFontFamilyName) - 1] = '\0';
+    settings.fontFamily = CrossPointSettings::NOTOSERIF;
+  }
+}
+
 }  // namespace
 
 void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
@@ -247,12 +258,25 @@ bool CrossPointSettings::loadFromBinaryFile() {
   } else {
     applyLegacyFrontButtonLayout(*this);
   }
+  migrateLegacyOpenDyslexicSelection(*this);
 
   LOG_DBG("CPS", "Settings loaded from binary file");
   return true;
 }
 
 float CrossPointSettings::getReaderLineCompression() const {
+  if (sdFontFamilyName[0] != '\0') {
+    switch (lineSpacing) {
+      case TIGHT:
+        return 0.95f;
+      case NORMAL:
+      default:
+        return 1.0f;
+      case WIDE:
+        return 1.1f;
+    }
+  }
+
   switch (fontFamily) {
     case NOTOSERIF:
     default:
@@ -321,6 +345,13 @@ int CrossPointSettings::getRefreshFrequency() const {
 }
 
 int CrossPointSettings::getReaderFontId() const {
+  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver != nullptr) {
+    const int sdFontId = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, fontSize);
+    if (sdFontId != 0) {
+      return sdFontId;
+    }
+  }
+
   switch (fontFamily) {
     case NOTOSERIF:
     default:

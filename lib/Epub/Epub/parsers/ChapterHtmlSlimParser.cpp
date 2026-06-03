@@ -8,11 +8,7 @@
 #include <XmlParserUtils.h>
 #include <expat.h>
 
-#include <algorithm>
 #include <iterator>
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 #include "../../Epub.h"
 #include "../Page.h"
@@ -145,7 +141,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
     anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
     pendingAnchorId.clear();
   }
-  currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, blockStyle));
+  currentTextBlock.reset(new ParsedText(extraParagraphSpacing, hyphenationEnabled, focusReadingEnabled, blockStyle));
   wordsExtractedInBlock = 0;
 }
 
@@ -160,6 +156,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 
   if (strcmp(name, "p") == 0) {
     self->xpathParagraphIndex++;
+  }
+  if (strcmp(name, "li") == 0) {
+    self->xpathListItemIndex++;
   }
 
   // Extract class, style, and id attributes
@@ -449,81 +448,59 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   }
                 }
 
-                const int availableWidth = containerWidth;
-                const int availableHeight = self->viewportHeight - imageMarginTop - imageMarginBottom;
-                if (availableWidth <= 0 || availableHeight <= 0) {
-                  LOG_ERR("EHP", "Image has no drawable area after margins: %dx%d available", availableWidth,
-                          availableHeight);
-                  Storage.remove(cachedImagePath.c_str());
-                } else {
-                  if (displayWidth > availableWidth || displayHeight > availableHeight) {
-                    const float scaleX =
-                        (displayWidth > availableWidth) ? static_cast<float>(availableWidth) / displayWidth : 1.0f;
-                    const float scaleY =
-                        (displayHeight > availableHeight) ? static_cast<float>(availableHeight) / displayHeight : 1.0f;
-                    const float scale = (scaleX < scaleY) ? scaleX : scaleY;
-                    displayWidth = std::max(1, static_cast<int>(displayWidth * scale + 0.5f));
-                    displayHeight = std::max(1, static_cast<int>(displayHeight * scale + 0.5f));
-                    LOG_DBG("EHP", "Adjusted image to fit margins: %dx%d", displayWidth, displayHeight);
-                  }
-
-                  // Create page for image - only break if image won't fit remaining space
-                  if (self->currentPage && !self->currentPage->elements.empty() &&
-                      (self->currentPageNextY + imageMarginTop + displayHeight + imageMarginBottom >
-                       self->viewportHeight)) {
-                    self->completePageFn(std::move(self->currentPage), self->xpathParagraphIndex);
-                    self->completedPageCount++;
-                    self->currentPage.reset(new Page());
-                    if (!self->currentPage) {
-                      LOG_ERR("EHP", "Failed to create new page");
-                      return;
-                    }
-                    self->currentPageNextY = 0;
-                  } else if (!self->currentPage) {
-                    self->currentPage.reset(new Page());
-                    if (!self->currentPage) {
-                      LOG_ERR("EHP", "Failed to create initial page");
-                      return;
-                    }
-                    self->currentPageNextY = 0;
-                  }
-
-                  // Apply top margin from container block
-                  self->currentPageNextY += imageMarginTop;
-
-                  // Create ImageBlock and add to page
-                  auto imageBlock = std::make_shared<ImageBlock>(cachedImagePath, displayWidth, displayHeight);
-                  if (!imageBlock) {
-                    LOG_ERR("EHP", "Failed to create ImageBlock");
+                // Create page for image - only break if image won't fit remaining space
+                if (self->currentPage && !self->currentPage->elements.empty() &&
+                    (self->currentPageNextY + imageMarginTop + displayHeight + imageMarginBottom >
+                     self->viewportHeight)) {
+                  self->completePageFn(std::move(self->currentPage), self->xpathParagraphIndex,
+                                       self->xpathListItemIndex);
+                  self->completedPageCount++;
+                  self->currentPage.reset(new Page());
+                  if (!self->currentPage) {
+                    LOG_ERR("EHP", "Failed to create new page");
                     return;
                   }
-                  int xPos = (self->viewportWidth - displayWidth) / 2;
-                  if (self->currentTextBlock && self->currentTextBlock->isEmpty()) {
-                    const int leftInset = self->currentTextBlock->getBlockStyle().leftInset();
-                    xPos = leftInset + (availableWidth - displayWidth) / 2;
-                  }
-                  auto pageImage = std::make_shared<PageImage>(imageBlock, xPos, self->currentPageNextY);
-                  if (!pageImage) {
-                    LOG_ERR("EHP", "Failed to create PageImage");
+                  self->currentPageNextY = 0;
+                } else if (!self->currentPage) {
+                  self->currentPage.reset(new Page());
+                  if (!self->currentPage) {
+                    LOG_ERR("EHP", "Failed to create initial page");
                     return;
                   }
-                  self->currentPage->elements.push_back(pageImage);
-                  self->currentPageNextY += displayHeight + imageMarginBottom;
+                  self->currentPageNextY = 0;
+                }
 
-                  // The image consumed the empty block's accumulated vertical spacing.
-                  // Reset the block so the Vertical merge in startNewTextBlock doesn't
-                  // re-apply the same margins to the next text paragraph.
-                  if (self->currentTextBlock && self->currentTextBlock->isEmpty()) {
-                    BlockStyle resetStyle;
-                    resetStyle.alignment = (self->paragraphAlignment == static_cast<uint8_t>(CssTextAlign::None))
-                                               ? CssTextAlign::Justify
-                                               : static_cast<CssTextAlign>(self->paragraphAlignment);
-                    self->currentTextBlock->setBlockStyle(resetStyle);
-                  }
+                // Apply top margin from container block
+                self->currentPageNextY += imageMarginTop;
 
-                  self->depth += 1;
+                // Create ImageBlock and add to page
+                auto imageBlock = std::make_shared<ImageBlock>(cachedImagePath, displayWidth, displayHeight);
+                if (!imageBlock) {
+                  LOG_ERR("EHP", "Failed to create ImageBlock");
                   return;
                 }
+                int xPos = (self->viewportWidth - displayWidth) / 2;
+                auto pageImage = std::make_shared<PageImage>(imageBlock, xPos, self->currentPageNextY);
+                if (!pageImage) {
+                  LOG_ERR("EHP", "Failed to create PageImage");
+                  return;
+                }
+                self->currentPage->elements.push_back(pageImage);
+                self->currentPageNextY += displayHeight + imageMarginBottom;
+
+                // The image consumed the empty block's accumulated vertical spacing.
+                // Reset the block so the Vertical merge in startNewTextBlock doesn't
+                // re-apply the same margins to the next text paragraph.
+                if (self->currentTextBlock && self->currentTextBlock->isEmpty()) {
+                  BlockStyle resetStyle;
+                  resetStyle.alignment = (self->paragraphAlignment == static_cast<uint8_t>(CssTextAlign::None))
+                                             ? CssTextAlign::Justify
+                                             : static_cast<CssTextAlign>(self->paragraphAlignment);
+                  self->currentTextBlock->setBlockStyle(resetStyle);
+                }
+
+                self->depth += 1;
+                return;
               } else {
                 LOG_ERR("EHP", "Failed to get image dimensions");
                 Storage.remove(cachedImagePath.c_str());
@@ -1102,7 +1079,6 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 
   // Compute the time taken to parse and build pages
   const uint32_t chapterStartTime = millis();
-  uint32_t parseChunkCounter = 0;
   do {
     void* const buf = XML_GetBuffer(parser, PARSE_BUFFER_SIZE);
     if (!buf) {
@@ -1130,10 +1106,6 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
       file.close();
       return false;
     }
-
-    if ((++parseChunkCounter & 0x0F) == 0) {
-      vTaskDelay(1);
-    }
   } while (!done);
   LOG_DBG("EHP", "Time to parse and build pages: %lu ms", millis() - chapterStartTime);
 
@@ -1147,7 +1119,7 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
       anchorData.push_back({std::move(pendingAnchorId), static_cast<uint16_t>(completedPageCount)});
       pendingAnchorId.clear();
     }
-    completePageFn(std::move(currentPage), xpathParagraphIndex);
+    completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
     completedPageCount++;
     currentPage.reset();
     currentTextBlock.reset();
@@ -1165,7 +1137,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
   }
 
   if (currentPageNextY + lineHeight > viewportHeight) {
-    completePageFn(std::move(currentPage), xpathParagraphIndex);
+    completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
     completedPageCount++;
     currentPage.reset(new Page());
     currentPageNextY = 0;

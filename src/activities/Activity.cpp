@@ -31,12 +31,12 @@ Rect rotatePortraitRectToCurrentOrientation(const Rect& rect, const GfxRenderer&
     case GfxRenderer::Orientation::Portrait:
       return rect;
     case GfxRenderer::Orientation::LandscapeClockwise:
-      return Rect{portraitHeight - rect.y - rect.height, rect.x, rect.height, rect.width};
+      return Rect(portraitHeight - rect.y - rect.height, rect.x, rect.height, rect.width);
     case GfxRenderer::Orientation::PortraitInverted:
-      return Rect{portraitWidth - rect.x - rect.width, portraitHeight - rect.y - rect.height, rect.width,
-                  rect.height};
+      return Rect(portraitWidth - rect.x - rect.width, portraitHeight - rect.y - rect.height, rect.width,
+                  rect.height);
     case GfxRenderer::Orientation::LandscapeCounterClockwise:
-      return Rect{rect.y, portraitWidth - rect.x - rect.width, rect.height, rect.width};
+      return Rect(rect.y, portraitWidth - rect.x - rect.width, rect.height, rect.width);
   }
 
   return rect;

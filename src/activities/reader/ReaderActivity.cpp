@@ -6,6 +6,7 @@
 #include "CrossPointSettings.h"
 #include "Epub.h"
 #include "EpubReaderActivity.h"
+#include "SdCardFontGlobals.h"
 #include "Txt.h"
 #include "TxtReaderActivity.h"
 #include "Xtc.h"
@@ -110,6 +111,9 @@ void ReaderActivity::onEnter() {
   }
 
   currentBookPath = initialBookPath;
+  if (!isBmpFile(initialBookPath)) {
+    ensureSdFontLoaded();
+  }
   if (isBmpFile(initialBookPath)) {
     onGoToBmpViewer(initialBookPath);
   } else if (isXtcFile(initialBookPath)) {

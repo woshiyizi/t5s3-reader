@@ -144,6 +144,7 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   // Language -- managed by LanguageSelectActivity, not in SettingsList.
   // Stored as ISO code string ("EN", "DE", ...) for stability across enum reorders.
   doc["language"] = (s.language < getLanguageCount()) ? LANGUAGE_CODES[s.language] : "EN";
+  doc["sdFontFamilyName"] = s.sdFontFamilyName;
 
   String json;
   serializeJson(doc, json);
@@ -166,6 +167,10 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   if (doc["statusBarChapterPageCount"].isNull()) {
     applyLegacyStatusBarSettings(s);
   }
+  const bool legacyOpenDyslexic =
+      !doc["sdFontFamilyName"].is<const char*>() &&
+      doc["fontFamily"].is<int>() &&
+      doc["fontFamily"].as<int>() == static_cast<int>(CrossPointSettings::OPENDYSLEXIC);
 
   for (const auto& info : getSettingsList()) {
     if (!info.key) continue;
@@ -213,6 +218,16 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   }
 
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
+  const std::string sdFontFamilyName = doc["sdFontFamilyName"] | std::string("");
+  strncpy(s.sdFontFamilyName, sdFontFamilyName.c_str(), sizeof(s.sdFontFamilyName) - 1);
+  s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
+  if (s.sdFontFamilyName[0] == '\0' && legacyOpenDyslexic) {
+    strncpy(s.sdFontFamilyName, "OpenDyslexic", sizeof(s.sdFontFamilyName) - 1);
+    s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
+    s.fontFamily = CrossPointSettings::NOTOSERIF;
+    if (needsResave) *needsResave = true;
+  }
+
   using S = CrossPointSettings;
   s.frontButtonBack =
       clamp(doc["frontButtonBack"] | (uint8_t)S::FRONT_HW_BACK, S::FRONT_BUTTON_HARDWARE_COUNT, S::FRONT_HW_BACK);

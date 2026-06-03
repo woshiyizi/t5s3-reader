@@ -2,18 +2,73 @@
 
 #include <HalTiltSensor.h>
 #include <I18n.h>
+#include <SdCardFontRegistry.h>
 
+#include <algorithm>
+#include <cstring>
+#include <iterator>
 #include <vector>
 
 #include "CrossPointSettings.h"
 #include "KOReaderCredentialStore.h"
 #include "activities/settings/SettingsActivity.h"
 
+inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
+  SettingInfo setting =
+      SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
+                        {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER);
+
+  if (registry == nullptr || registry->getFamilyCount() == 0) {
+    return setting;
+  }
+
+  std::vector<std::string> sdFamilyNames;
+  const auto& families = registry->getFamilies();
+  sdFamilyNames.reserve(families.size());
+  std::transform(families.begin(), families.end(), std::back_inserter(sdFamilyNames),
+                 [](const SdCardFontFamilyInfo& family) { return family.name; });
+
+  setting.enumStringValues.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + sdFamilyNames.size());
+  setting.enumStringValues.push_back(I18N.get(StrId::STR_NOTO_SERIF));
+  setting.enumStringValues.push_back(I18N.get(StrId::STR_NOTO_SANS));
+  setting.enumStringValues.insert(setting.enumStringValues.end(), sdFamilyNames.begin(), sdFamilyNames.end());
+  setting.valuePtr = nullptr;
+
+  setting.valueGetter = [sdFamilyNames]() -> uint8_t {
+    if (SETTINGS.sdFontFamilyName[0] != '\0') {
+      for (size_t i = 0; i < sdFamilyNames.size(); i++) {
+        if (sdFamilyNames[i] == SETTINGS.sdFontFamilyName) {
+          return static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i);
+        }
+      }
+    }
+    return SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily
+                                                                        : CrossPointSettings::NOTOSERIF;
+  };
+
+  setting.valueSetter = [sdFamilyNames](uint8_t value) {
+    if (value < CrossPointSettings::BUILTIN_FONT_COUNT) {
+      SETTINGS.fontFamily = value;
+      SETTINGS.sdFontFamilyName[0] = '\0';
+      return;
+    }
+
+    const int sdIndex = value - CrossPointSettings::BUILTIN_FONT_COUNT;
+    if (sdIndex >= 0 && sdIndex < static_cast<int>(sdFamilyNames.size())) {
+      strncpy(SETTINGS.sdFontFamilyName, sdFamilyNames[sdIndex].c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
+      SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
+      SETTINGS.fontFamily = CrossPointSettings::NOTOSERIF;
+    }
+  };
+
+  return setting;
+}
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
-inline const std::vector<SettingInfo>& getSettingsList() {
-  static const std::vector<SettingInfo> list = [] {
+inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* registry = nullptr) {
+  static const std::vector<SettingInfo> baseList = [] {
     std::vector<SettingInfo> v = {
         // --- Display ---
         SettingInfo::Value(StrId::STR_BACKLIGHT, &CrossPointSettings::backlightLevel, {0, 10, 1}, "backlightLevel",
@@ -43,8 +98,7 @@ inline const std::vector<SettingInfo>& getSettingsList() {
 
         // --- Reader ---
         SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
-                          {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS, StrId::STR_OPEN_DYSLEXIC}, "fontFamily",
-                          StrId::STR_CAT_READER),
+                          {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS}, "fontFamily", StrId::STR_CAT_READER),
         SettingInfo::Enum(StrId::STR_FONT_SIZE, &CrossPointSettings::fontSize,
                           {StrId::STR_SMALL, StrId::STR_MEDIUM, StrId::STR_LARGE, StrId::STR_X_LARGE}, "fontSize",
                           StrId::STR_CAT_READER),
@@ -73,6 +127,7 @@ inline const std::vector<SettingInfo>& getSettingsList() {
         SettingInfo::Enum(StrId::STR_IMAGES, &CrossPointSettings::imageRendering,
                           {StrId::STR_IMAGES_DISPLAY, StrId::STR_IMAGES_PLACEHOLDER, StrId::STR_IMAGES_SUPPRESS},
                           "imageRendering", StrId::STR_CAT_READER),
+
         // --- Controls ---
         SettingInfo::Enum(StrId::STR_SIDE_BTN_LAYOUT, &CrossPointSettings::sideButtonLayout,
                           {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV}, "sideButtonLayout", StrId::STR_CAT_CONTROLS),
@@ -80,6 +135,7 @@ inline const std::vector<SettingInfo>& getSettingsList() {
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
+
         // --- System ---
         SettingInfo::Enum(StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeout,
                           {StrId::STR_MIN_1, StrId::STR_MIN_5, StrId::STR_MIN_10, StrId::STR_MIN_15, StrId::STR_MIN_30},
@@ -90,33 +146,34 @@ inline const std::vector<SettingInfo>& getSettingsList() {
         // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
         SettingInfo::DynamicString(
             StrId::STR_KOREADER_USERNAME, [] { return KOREADER_STORE.getUsername(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setCredentials(v, KOREADER_STORE.getPassword());
+            [](const std::string& value) {
+              KOREADER_STORE.setCredentials(value, KOREADER_STORE.getPassword());
               KOREADER_STORE.saveToFile();
             },
             "koUsername", StrId::STR_KOREADER_SYNC),
         SettingInfo::DynamicString(
             StrId::STR_KOREADER_PASSWORD, [] { return KOREADER_STORE.getPassword(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), v);
+            [](const std::string& value) {
+              KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), value);
               KOREADER_STORE.saveToFile();
             },
             "koPassword", StrId::STR_KOREADER_SYNC),
         SettingInfo::DynamicString(
             StrId::STR_SYNC_SERVER_URL, [] { return KOREADER_STORE.getServerUrl(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setServerUrl(v);
+            [](const std::string& value) {
+              KOREADER_STORE.setServerUrl(value);
               KOREADER_STORE.saveToFile();
             },
             "koServerUrl", StrId::STR_KOREADER_SYNC),
         SettingInfo::DynamicEnum(
             StrId::STR_DOCUMENT_MATCHING, {StrId::STR_FILENAME, StrId::STR_BINARY},
             [] { return static_cast<uint8_t>(KOREADER_STORE.getMatchMethod()); },
-            [](uint8_t v) {
-              KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(v));
+            [](uint8_t value) {
+              KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(value));
               KOREADER_STORE.saveToFile();
             },
             "koMatchMethod", StrId::STR_KOREADER_SYNC),
+
         // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
         SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
                             "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),
@@ -134,9 +191,8 @@ inline const std::vector<SettingInfo>& getSettingsList() {
         SettingInfo::Toggle(StrId::STR_BATTERY, &CrossPointSettings::statusBarBattery, "statusBarBattery",
                             StrId::STR_CUSTOMISE_STATUS_BAR),
     };
-    // Only show tilt page turn setting when a tilt sensor is available.
+
     if (halTiltSensor.isAvailable()) {
-      // Insert after the long-press behavior setting (end of Controls section)
       for (auto it = v.begin(); it != v.end(); ++it) {
         if (it->nameId == StrId::STR_LONG_PRESS_BEHAVIOR) {
           v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
@@ -148,5 +204,12 @@ inline const std::vector<SettingInfo>& getSettingsList() {
     }
     return v;
   }();
+
+  std::vector<SettingInfo> list = baseList;
+  auto it = std::find_if(list.begin(), list.end(),
+                         [](const SettingInfo& setting) { return setting.nameId == StrId::STR_FONT_FAMILY; });
+  if (it != list.end()) {
+    *it = buildFontFamilySetting(registry);
+  }
   return list;
 }

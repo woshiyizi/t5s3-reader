@@ -15,14 +15,20 @@ class TextBlock final : public Block {
   std::vector<std::string> words;
   std::vector<int16_t> wordXpos;
   std::vector<EpdFontFamily::Style> wordStyles;
+  // Optional focus-reading metadata. Empty vectors mean the block has no split words.
+  std::vector<uint8_t> wordFocusBoundary;
+  std::vector<uint16_t> wordFocusSuffixX;
   BlockStyle blockStyle;
 
  public:
   explicit TextBlock(std::vector<std::string> words, std::vector<int16_t> word_xpos,
-                     std::vector<EpdFontFamily::Style> word_styles, const BlockStyle& blockStyle = BlockStyle())
+                     std::vector<EpdFontFamily::Style> word_styles, std::vector<uint8_t> focus_boundary = {},
+                     std::vector<uint16_t> focus_suffix_x = {}, const BlockStyle& blockStyle = BlockStyle())
       : words(std::move(words)),
         wordXpos(std::move(word_xpos)),
         wordStyles(std::move(word_styles)),
+        wordFocusBoundary(std::move(focus_boundary)),
+        wordFocusSuffixX(std::move(focus_suffix_x)),
         blockStyle(blockStyle) {}
   ~TextBlock() override = default;
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }

@@ -219,8 +219,8 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
 
   ChapterHtmlSlimParser visitor(
       epub, tmpHtmlPath, renderer, fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
-      viewportHeight, hyphenationEnabled,
-      [this, &lut](std::unique_ptr<Page> page, const uint16_t paragraphIndex) {
+      viewportHeight, hyphenationEnabled, false,
+      [this, &lut](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t) {
         lut.push_back({this->onPageComplete(std::move(page)), paragraphIndex});
       },
       embeddedStyle, contentBase, imageBasePath, imageRendering, popupFn, cssParser);
