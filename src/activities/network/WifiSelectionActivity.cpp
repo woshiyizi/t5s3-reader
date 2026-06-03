@@ -35,6 +35,7 @@ void WifiSelectionActivity::onEnter() {
   savePromptSelection = 0;
   forgetPromptSelection = 0;
   autoConnecting = false;
+  scanAttempt = 0;
 
   // Cache MAC address for display
   uint8_t mac[6];
@@ -89,17 +90,42 @@ void WifiSelectionActivity::onExit() {
 
 void WifiSelectionActivity::startWifiScan() {
   autoConnecting = false;
+  scanAttempt = 0;
+  startWifiScanAttempt();
+}
+
+void WifiSelectionActivity::startWifiScanAttempt() {
   state = WifiSelectionState::SCANNING;
   networks.clear();
   requestUpdate();
 
-  // Set WiFi mode to station
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(100);
+  WiFi.scanDelete();
+  WiFi.persistent(false);
 
-  // Start async scan
-  WiFi.scanNetworks(true);  // true = async scan
+  // Fully restart STA before scanning. This avoids stale AP/STA/off state causing empty scans on ESP32-S3.
+  WiFi.mode(WIFI_OFF);
+  delay(150);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.disconnect(false, false);
+  delay(150);
+
+  const bool passiveScan = scanAttempt >= 2;
+  const uint32_t maxMsPerChannel = scanAttempt == 0 ? 350 : (scanAttempt == 1 ? 700 : 1000);
+  const int16_t scanStart =
+      WiFi.scanNetworks(true, true, passiveScan, maxMsPerChannel);  // async, include hidden AP records
+
+  LOG_DBG("WIFI", "Scan attempt %u/%u started: result=%d passive=%d max_ms=%lu mode=%d heap=%d", scanAttempt + 1,
+          MAX_SCAN_ATTEMPTS, scanStart, passiveScan, maxMsPerChannel, WiFi.getMode(), ESP.getFreeHeap());
+
+  if (scanStart == WIFI_SCAN_FAILED && scanAttempt + 1 >= MAX_SCAN_ATTEMPTS) {
+    LOG_ERR("WIFI", "WiFi scan failed to start after %u attempts", MAX_SCAN_ATTEMPTS);
+    state = WifiSelectionState::NETWORK_LIST;
+    requestUpdate();
+  } else if (scanStart == WIFI_SCAN_FAILED) {
+    scanAttempt++;
+    startWifiScanAttempt();
+  }
 }
 
 void WifiSelectionActivity::processWifiScanResults() {
@@ -111,6 +137,12 @@ void WifiSelectionActivity::processWifiScanResults() {
   }
 
   if (scanResult == WIFI_SCAN_FAILED) {
+    LOG_ERR("WIFI", "WiFi scan attempt %u/%u failed", scanAttempt + 1, MAX_SCAN_ATTEMPTS);
+    if (scanAttempt + 1 < MAX_SCAN_ATTEMPTS) {
+      scanAttempt++;
+      startWifiScanAttempt();
+      return;
+    }
     state = WifiSelectionState::NETWORK_LIST;
     requestUpdate();
     return;
@@ -147,6 +179,15 @@ void WifiSelectionActivity::processWifiScanResults() {
   for (const auto& pair : uniqueNetworks) {
     // cppcheck-suppress useStlAlgorithm
     networks.push_back(pair.second);
+  }
+
+  LOG_DBG("WIFI", "WiFi scan attempt %u/%u complete: raw=%d visible=%zu", scanAttempt + 1, MAX_SCAN_ATTEMPTS,
+          scanResult, networks.size());
+
+  if (networks.empty() && scanAttempt + 1 < MAX_SCAN_ATTEMPTS) {
+    scanAttempt++;
+    startWifiScanAttempt();
+    return;
   }
 
   // Sort: saved-password networks first, then by signal strength (strongest first)

@@ -72,12 +72,16 @@ class WifiSelectionActivity final : public Activity {
   // Whether we are attempting to auto-connect
   bool autoConnecting = false;
 
+  // WiFi scans can occasionally return 0/failed immediately after bringing STA up.
+  uint8_t scanAttempt = 0;
+
   // Save/forget prompt selection (0 = Yes, 1 = No)
   int savePromptSelection = 0;
   int forgetPromptSelection = 0;
 
   // Connection timeout
   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
+  static constexpr uint8_t MAX_SCAN_ATTEMPTS = 3;
   unsigned long connectionStartTime = 0;
 
   void renderNetworkList() const;
@@ -89,6 +93,7 @@ class WifiSelectionActivity final : public Activity {
   void renderForgetPrompt() const;
 
   void startWifiScan();
+  void startWifiScanAttempt();
   void processWifiScanResults();
   void selectNetwork(int index);
   void attemptConnection();
