@@ -335,25 +335,40 @@ void ActivityManager::requestUpdateAndWait() {
 RenderLock::RenderLock() {
   xSemaphoreTake(activityManager.renderingMutex, portMAX_DELAY);
   isLocked = true;
+  ownerTask = xTaskGetCurrentTaskHandle();
 }
 
 RenderLock::RenderLock([[maybe_unused]] Activity&) {
   xSemaphoreTake(activityManager.renderingMutex, portMAX_DELAY);
   isLocked = true;
+  ownerTask = xTaskGetCurrentTaskHandle();
 }
 
 RenderLock::~RenderLock() {
-  if (isLocked) {
-    xSemaphoreGive(activityManager.renderingMutex);
-    isLocked = false;
-  }
+  unlock();
 }
 
 void RenderLock::unlock() {
-  if (isLocked) {
-    xSemaphoreGive(activityManager.renderingMutex);
-    isLocked = false;
+  if (!isLocked) {
+    return;
   }
+
+  TaskHandle_t currentTask = xTaskGetCurrentTaskHandle();
+  TaskHandle_t holderTask = xSemaphoreGetMutexHolder(activityManager.renderingMutex);
+  if (ownerTask == nullptr) {
+    ownerTask = holderTask;
+  }
+
+  if (ownerTask == nullptr || holderTask != ownerTask || currentTask != ownerTask) {
+    LOG_ERR("ACT", "RenderLock unlock skipped: owner=%p holder=%p current=%p", ownerTask, holderTask, currentTask);
+    isLocked = false;
+    ownerTask = nullptr;
+    return;
+  }
+
+  xSemaphoreGive(activityManager.renderingMutex);
+  isLocked = false;
+  ownerTask = nullptr;
 }
 
 /**
