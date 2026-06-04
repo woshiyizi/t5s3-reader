@@ -1,8 +1,11 @@
 #include "BoardT5S3.h"
 
+#include <cassert>
 #include <bq25896.h>
 #include <bq25896_hal_esp_idf.h>
 #include <bq27220.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include <SPI.h>
 #include <Wire.h>
@@ -35,6 +38,7 @@ bq25896_hal_esp_idf_ctx_t bq25896HalCtx = {};
 bq25896_t bq25896 = {};
 BQ27220 bq27220;
 bool backlightInitialized = false;
+SemaphoreHandle_t i2cMutex = nullptr;
 
 constexpr uint16_t GT911_PRODUCT_ID_REG = 0x8140;
 constexpr uint16_t GT911_STATUS_REG = 0x814E;
@@ -44,7 +48,16 @@ constexpr uint8_t GT911_STATUS_HAVE_KEY = 0x10;
 constexpr uint8_t GT911_TOUCH_COUNT_MASK = 0x0F;
 constexpr uint8_t GT911_BACKUP_ADDR = 0x14;
 
+SemaphoreHandle_t ensureI2CMutex() {
+  if (i2cMutex == nullptr) {
+    i2cMutex = xSemaphoreCreateRecursiveMutex();
+    assert(i2cMutex != nullptr && "Failed to create I2C mutex");
+  }
+  return i2cMutex;
+}
+
 bool i2cWriteReg(uint8_t addr, uint8_t reg, const uint8_t* data, size_t len) {
+  ScopedI2CLock lock;
   Wire.beginTransmission(addr);
   Wire.write(reg);
   if (data != nullptr && len > 0) {
@@ -54,6 +67,7 @@ bool i2cWriteReg(uint8_t addr, uint8_t reg, const uint8_t* data, size_t len) {
 }
 
 bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
+  ScopedI2CLock lock;
   Wire.beginTransmission(addr);
   Wire.write(reg);
   if (Wire.endTransmission(false) != 0) {
@@ -181,7 +195,20 @@ bool configureBq27220() {
 
 }  // namespace
 
+ScopedI2CLock::ScopedI2CLock() {
+  xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY);
+  locked_ = true;
+}
+
+ScopedI2CLock::~ScopedI2CLock() {
+  if (locked_) {
+    xSemaphoreGiveRecursive(ensureI2CMutex());
+    locked_ = false;
+  }
+}
+
 void beginI2C() {
+  ensureI2CMutex();
   Wire.begin(T5S3_SDA, T5S3_SCL);
   Wire.setClock(T5S3_I2C_FREQ);
   Wire.setTimeOut(50);
@@ -355,6 +382,7 @@ bool readBatteryState(BatteryState* state) {
 }
 
 bool pca9535Present() {
+  ScopedI2CLock lock;
   Wire.beginTransmission(T5S3_PCA9535_ADDR);
   return Wire.endTransmission() == 0;
 }
@@ -454,6 +482,7 @@ bool isUsbConnected() {
 }
 
 bool GT911Touch::writeReg8(uint16_t reg, uint8_t value) {
+  ScopedI2CLock lock;
   Wire.beginTransmission(address);
   Wire.write(static_cast<uint8_t>(reg >> 8));
   Wire.write(static_cast<uint8_t>(reg & 0xFF));
@@ -462,6 +491,7 @@ bool GT911Touch::writeReg8(uint16_t reg, uint8_t value) {
 }
 
 bool GT911Touch::readReg(uint16_t reg, uint8_t* data, size_t len) {
+  ScopedI2CLock lock;
   Wire.beginTransmission(address);
   Wire.write(static_cast<uint8_t>(reg >> 8));
   Wire.write(static_cast<uint8_t>(reg & 0xFF));

@@ -6,6 +6,18 @@
 
 namespace BoardT5S3 {
 
+class ScopedI2CLock {
+ public:
+  ScopedI2CLock();
+  ~ScopedI2CLock();
+
+  ScopedI2CLock(const ScopedI2CLock&) = delete;
+  ScopedI2CLock& operator=(const ScopedI2CLock&) = delete;
+
+ private:
+  bool locked_ = false;
+};
+
 void begin();
 void beginI2C();
 void initBacklight();

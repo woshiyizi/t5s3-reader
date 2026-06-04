@@ -34,6 +34,7 @@ constexpr uint8_t kGrayLight = 0xAA;
 constexpr uint8_t kGrayWhite = 0xFF;
 
 bool writeTpsRegister(const uint8_t reg, const uint8_t* data, const size_t len) {
+  BoardT5S3::ScopedI2CLock lock;
   Wire.beginTransmission(T5S3_TPS65185_ADDR);
   Wire.write(reg);
   if (data != nullptr && len > 0) {
@@ -49,6 +50,7 @@ bool readTpsRegister(const uint8_t reg, uint8_t* data, const size_t len) {
     return false;
   }
 
+  BoardT5S3::ScopedI2CLock lock;
   Wire.beginTransmission(T5S3_TPS65185_ADDR);
   Wire.write(reg);
   if (Wire.endTransmission(false) != 0) {
