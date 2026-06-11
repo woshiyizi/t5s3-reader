@@ -88,36 +88,17 @@ pio run -e default -t upload
 pio device monitor -b 115200
 ```
 
-### Option 3: esptool
+### Option 3: Flash Download Tool
 
-Install esptool:
+1. Download [Flash Download Tool](https://docs.espressif.com/projects/esp-test-tools/en/latest/esp32/production_stage/tools/flash_download_tool.html).
 
-```bash
-python -m pip install esptool
-```
+2. Select `esp32s3`.
 
-After building, the firmware is located at:
+![](./docs/README_img/download1.png)
 
-```text
-.pio/build/default/firmware.bin
-```
+3. Select the firmware from the `firmware/` folder, set the flash address to `0x0`, choose your serial port, and click `START`.
 
-Flash only the application firmware:
-
-```bash
-esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash 0x10000 .pio/build/default/firmware.bin
-```
-
-For a blank device or a full restore, flash bootloader, partition table, and firmware:
-
-```bash
-esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash \
-  0x0000 .pio/build/default/bootloader.bin \
-  0x8000 .pio/build/default/partitions.bin \
-  0x10000 .pio/build/default/firmware.bin
-```
-
-Replace `COMx` with your serial port, such as `COM5` on Windows, `/dev/ttyACM0` on Linux, or `/dev/cu.usbmodem*` on macOS.
+![](./docs/README_img/download2.png)
 
 ## SD Card And Books
 
@@ -135,6 +116,19 @@ Recommended layout:
 ```
 
 The firmware creates a `.crosspoint/` directory on the SD card for settings, reading progress, cache, and cover thumbnails. If cache corruption or repeated crashes occur, back up the SD card and delete `.crosspoint/` to let the firmware regenerate it.
+
+### How To Add Fonts
+
+If you already have prebuilt `.cpfont` files, copy them into the SD card `.fonts/` directory, insert the SD card into the device, and then select the font in `Settings -> Reader -> Reader Font Family`.
+
+`SourceHanSansSC` is the Chinese-capable font family currently prepared in this repository.
+
+![](./docs/README_img/fonts1.png)
+
+More information:
+
+- English font generation reference: [sd-card-fonts](./docs/sd-card-fonts.md)
+- Chinese font usage guide: [Chinese Font Usage Guide](./docs/Chinese%20Font%20Usage%20Guide.md)
 
 ## Device Operation
 
@@ -200,7 +194,7 @@ Use Left/Right or Up/Down to move, Confirm to open, and Back to return.
 
 In `Settings`, you can configure:
 
-- Backlight level from 0 to 10. `0` turns it off, the default is `2`, and it turns off automatically during sleep/power-off.
+- Backlight level from 0 to 10. `0` turns it off, the default is `2`, it automatically turns off during sleep or power-off, and the saved level is restored after wake or boot.
 - Font, font size, line spacing, and page margins.
 - Reading orientation: portrait, landscape, inverted, and more.
 - Refresh mode: quality, balanced, or fast.

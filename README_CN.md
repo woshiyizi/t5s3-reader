@@ -93,36 +93,17 @@ pio run -e default -t upload
 pio device monitor -b 115200
 ```
 
-### 方式三：使用 esptool 手动刷入
+### 方式三：使用 flash_download_tools 手动刷入
 
-安装 esptool：
+1. 下载 [Flash Download Tool](https://docs.espressif.com/projects/esp-test-tools/en/latest/esp32/production_stage/tools/flash_download_tool.html)
 
-```bash
-python -m pip install esptool
-```
+2. 选择 esp32s3
 
-编译后固件位于：
+![](./docs/README_img/download1.png)
 
-```text
-.pio/build/default/firmware.bin
-```
+3. 选择 `firmware/` 文件夹的固件，设置下载地址为 `0x0`，然后选择你的串口，最后点击 `START` 下载
 
-只刷应用固件：
-
-```bash
-esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash 0x10000 .pio/build/default/firmware.bin
-```
-
-如果是空白设备或需要完整恢复，可以同时刷入 bootloader、分区表和固件：
-
-```bash
-esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash \
-  0x0000 .pio/build/default/bootloader.bin \
-  0x8000 .pio/build/default/partitions.bin \
-  0x10000 .pio/build/default/firmware.bin
-```
-
-将 `COMx` 替换成你的串口，例如 Windows 下的 `COM5`，Linux 下的 `/dev/ttyACM0`，macOS 下的 `/dev/cu.usbmodem*`。
+![](./docs/README_img/download2.png)
 
 ## SD 卡和电子书
 
@@ -140,6 +121,18 @@ esptool.py --chip esp32s3 --port COMx --baud 921600 write_flash \
 ```
 
 固件会在 SD 卡上创建 `.crosspoint/` 目录，用于保存设置、阅读进度、缓存和封面缩略图。若遇到异常缓存或反复崩溃，可以备份后删除 `.crosspoint/` 让系统重新生成。
+
+### 如何添加字体
+
+在 SD_fonts/ 文件夹下载有一些字体，只需要将字体文件复制到SD的 .fonts/ 文件夹下，然后在 SD 插入设备，就可以在 `Setting -> Reader -> Reader Font Family` 中设置所使用的字体；
+
+其中 `SourceHanSansSC` 字体是包含中文的；
+
+![](./docs/README_img/fonts1.png)
+
+更多英文字体生成参考文档：[sd-card-fonts](./docs/sd-card-fonts.md)
+
+更多中文字体生成参考文档：[中文字体使用说明](./docs/中文字体使用说明.md)
 
 ## 设备如何操作
 
