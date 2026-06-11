@@ -15,6 +15,11 @@ uint32_t toLowerCyrillic(uint32_t cp);
 
 bool isLatinLetter(uint32_t cp);
 bool isCyrillicLetter(uint32_t cp);
+bool isCjkCodepoint(uint32_t cp);
+bool isCjkPunctuation(uint32_t cp);
+bool isCjkOpeningPunctuation(uint32_t cp);
+bool isCjkClosingPunctuation(uint32_t cp);
+bool containsCjk(const std::vector<CodepointInfo>& cps);
 
 bool isAlphabetic(uint32_t cp);
 bool isPunctuation(uint32_t cp);

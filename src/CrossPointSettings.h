@@ -237,6 +237,7 @@ class CrossPointSettings {
 
   // Callback used to resolve a loaded SD card font to its runtime font ID.
   using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t fontSize);
+  static constexpr uint8_t SD_FONT_UI_CONTENT_ROLE = 0xFF;
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
 
@@ -244,6 +245,7 @@ class CrossPointSettings {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+  int getUserContentFontId() const;
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(FsFile& file, bool count_only = false) const;

@@ -5,6 +5,7 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "SdCardFontGlobals.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -107,6 +108,7 @@ void FontSelectionActivity::handleSelection() {
       SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
     }
   }
+  ensureSdFontLoaded();
   finish();
 }
 

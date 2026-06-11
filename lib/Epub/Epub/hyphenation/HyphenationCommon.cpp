@@ -67,6 +67,135 @@ bool isLatinLetter(const uint32_t cp) {
 
 bool isCyrillicLetter(const uint32_t cp) { return (cp >= 0x0400 && cp <= 0x052F); }
 
+bool isCjkCodepoint(const uint32_t cp) {
+  return (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
+         (cp >= 0x20000 && cp <= 0x2A6DF) || (cp >= 0x2A700 && cp <= 0x2B73F) ||
+         (cp >= 0x2B740 && cp <= 0x2B81F) || (cp >= 0x2B820 && cp <= 0x2CEAF) ||
+         (cp >= 0x2CEB0 && cp <= 0x2EBEF) || (cp >= 0x30000 && cp <= 0x323AF) ||
+         (cp >= 0x3040 && cp <= 0x30FF) || (cp >= 0x31F0 && cp <= 0x31FF) || (cp >= 0xAC00 && cp <= 0xD7AF) ||
+         (cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0x3130 && cp <= 0x318F);
+}
+
+bool isCjkPunctuation(const uint32_t cp) {
+  switch (cp) {
+    case 0x3001:  // 、
+    case 0x3002:  // 。
+    case 0x3008:  // 〈
+    case 0x3009:  // 〉
+    case 0x300A:  // 《
+    case 0x300B:  // 》
+    case 0x300C:  // 「
+    case 0x300D:  // 」
+    case 0x300E:  // 『
+    case 0x300F:  // 』
+    case 0x3010:  // 【
+    case 0x3011:  // 】
+    case 0x3014:  // 〔
+    case 0x3015:  // 〕
+    case 0x3016:  // 〖
+    case 0x3017:  // 〗
+    case 0x3018:  // 〘
+    case 0x3019:  // 〙
+    case 0x301A:  // 〚
+    case 0x301B:  // 〛
+    case 0x301C:  // 〜
+    case 0x301D:  // 〝
+    case 0x301E:  // 〞
+    case 0x301F:  // 〟
+    case 0xFF01:  // ！
+    case 0xFF08:  // （
+    case 0xFF09:  // ）
+    case 0xFF0C:  // ，
+    case 0xFF0E:  // ．
+    case 0xFF1A:  // ：
+    case 0xFF1B:  // ；
+    case 0xFF1F:  // ？
+    case 0xFF3B:  // ［
+    case 0xFF3D:  // ］
+    case 0xFF5B:  // ｛
+    case 0xFF5D:  // ｝
+    case 0xFF5E:  // ～
+    case 0xFF5F:  // ｟
+    case 0xFF60:  // ｠
+    case 0x2014:  // —
+    case 0x2018:  // ‘
+    case 0x2019:  // ’
+    case 0x201C:  // “
+    case 0x201D:  // ”
+    case 0x2026:  // …
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isCjkOpeningPunctuation(const uint32_t cp) {
+  switch (cp) {
+    case 0x3008:  // 〈
+    case 0x300A:  // 《
+    case 0x300C:  // 「
+    case 0x300E:  // 『
+    case 0x3010:  // 【
+    case 0x3014:  // 〔
+    case 0x3016:  // 〖
+    case 0x3018:  // 〘
+    case 0x301A:  // 〚
+    case 0x301D:  // 〝
+    case 0xFF08:  // （
+    case 0xFF3B:  // ［
+    case 0xFF5B:  // ｛
+    case 0xFF5F:  // ｟
+    case 0x2018:  // ‘
+    case 0x201C:  // “
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isCjkClosingPunctuation(const uint32_t cp) {
+  switch (cp) {
+    case 0x3001:  // 、
+    case 0x3002:  // 。
+    case 0x3009:  // 〉
+    case 0x300B:  // 》
+    case 0x300D:  // 」
+    case 0x300F:  // 』
+    case 0x3011:  // 】
+    case 0x3015:  // 〕
+    case 0x3017:  // 〗
+    case 0x3019:  // 〙
+    case 0x301B:  // 〛
+    case 0x301E:  // 〞
+    case 0x301F:  // 〟
+    case 0xFF01:  // ！
+    case 0xFF09:  // ）
+    case 0xFF0C:  // ，
+    case 0xFF0E:  // ．
+    case 0xFF1A:  // ：
+    case 0xFF1B:  // ；
+    case 0xFF1F:  // ？
+    case 0xFF3D:  // ］
+    case 0xFF5D:  // ｝
+    case 0xFF60:  // ｠
+    case 0x2019:  // ’
+    case 0x201D:  // ”
+    case 0x2026:  // …
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool containsCjk(const std::vector<CodepointInfo>& cps) {
+  for (const auto& cp : cps) {
+    if (isCjkCodepoint(cp.value) || isCjkPunctuation(cp.value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool isAlphabetic(const uint32_t cp) { return isLatinLetter(cp) || isCyrillicLetter(cp); }
 
 bool isPunctuation(const uint32_t cp) {
@@ -101,7 +230,7 @@ bool isPunctuation(const uint32_t cp) {
     case 0x2026:  // …
       return true;
     default:
-      return false;
+      return isCjkPunctuation(cp);
   }
 }
 

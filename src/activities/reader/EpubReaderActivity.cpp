@@ -934,6 +934,7 @@ void EpubReaderActivity::renderStatusBar() const {
   const float bookProgress = epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100;
 
   std::string title;
+  TextRole titleRole = TextRole::System;
 
   int textYOffset = 0;
 
@@ -954,13 +955,15 @@ void EpubReaderActivity::renderStatusBar() const {
     if (tocIndex != -1) {
       const auto tocItem = epub->getTocItem(tocIndex);
       title = tocItem.title;
+      titleRole = tocItem.title.empty() ? TextRole::System : TextRole::UserContent;
     }
 
   } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
     title = epub->getTitle();
+    titleRole = title.empty() ? TextRole::System : TextRole::UserContent;
   }
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset);
+  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, titleRole);
 }
 
 void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool savePosition) {

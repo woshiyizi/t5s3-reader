@@ -43,7 +43,8 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
 class RoundedRaffTheme : public BaseTheme {
  public:
   void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                  const char* subtitle = nullptr) const override;
+                  const char* subtitle = nullptr, TextRole titleRole = TextRole::System,
+                  TextRole subtitleRole = TextRole::System) const override;
   void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
                   bool selected) const override;
   void drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std::vector<RecentBook>& recentBooks,
@@ -57,7 +58,7 @@ class RoundedRaffTheme : public BaseTheme {
                 const std::function<std::string(int index)>& rowSubtitle = nullptr,
                 const std::function<UIIcon(int index)>& rowIcon = nullptr,
                 const std::function<std::string(int index)>& rowValue = nullptr,
-                bool highlightValue = false) const override;
+                bool highlightValue = false, TextRole textRole = TextRole::System) const override;
   void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
                        const char* btn4) const override;
   std::array<Rect, 4> getButtonHintTouchBounds(const GfxRenderer& renderer) const override;

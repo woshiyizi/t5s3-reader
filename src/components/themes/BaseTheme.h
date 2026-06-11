@@ -1,5 +1,7 @@
 #pragma once
 
+#include <EpdFontFamily.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -76,6 +78,7 @@ struct ThemeMetrics {
 enum UIIcon { Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot };
 
 enum class KeyboardKeyType { Normal, Shift, Mode, Space, Del, Ok, Disabled };
+enum class TextRole { System, UserContent };
 
 // Default theme implementation (Classic Theme)
 // Additional themes can inherit from this and override methods as needed
@@ -140,9 +143,10 @@ class BaseTheme {
                         const std::function<std::string(int index)>& rowSubtitle = nullptr,
                         const std::function<UIIcon(int index)>& rowIcon = nullptr,
                         const std::function<std::string(int index)>& rowValue = nullptr,
-                        bool highlightValue = false) const;
+                        bool highlightValue = false, TextRole textRole = TextRole::System) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                          const char* subtitle = nullptr) const;
+                          const char* subtitle = nullptr, TextRole titleRole = TextRole::System,
+                          TextRole subtitleRole = TextRole::System) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
   virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
@@ -157,7 +161,7 @@ class BaseTheme {
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   virtual void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                              const int pageCount, std::string title, const int paddingBottom = 0,
-                             const int textYOffset = 0) const;
+                             const int textYOffset = 0, TextRole titleRole = TextRole::System) const;
   virtual void drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label) const;
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode = false,
                              int contentStartX = 0, int contentWidth = 0) const;
@@ -168,6 +172,22 @@ class BaseTheme {
 
   // Shared constants and helpers for battery drawing (used by all themes)
   static constexpr int batteryPercentSpacing = 4;
+  static int resolveTextFontId(int systemFontId, TextRole role);
+  static int getLineHeightForRole(const GfxRenderer& renderer, int systemFontId, TextRole role);
+  static int getTextWidthForRole(const GfxRenderer& renderer, int systemFontId, TextRole role, const char* text,
+                                 EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  static std::string truncatedTextForRole(const GfxRenderer& renderer, int systemFontId, TextRole role,
+                                          const char* text, int maxWidth,
+                                          EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  static std::vector<std::string> wrappedTextForRole(const GfxRenderer& renderer, int systemFontId, TextRole role,
+                                                     const char* text, int maxWidth, int maxLines,
+                                                     EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  static void drawTextForRole(const GfxRenderer& renderer, int systemFontId, TextRole role, int x, int y,
+                              const char* text, bool black = true,
+                              EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  static void drawCenteredTextForRole(const GfxRenderer& renderer, int systemFontId, TextRole role, int y,
+                                      const char* text, bool black = true,
+                                      EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   static void drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight);
   static void drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX, int boltY);
 };

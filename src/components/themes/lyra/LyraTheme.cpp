@@ -138,7 +138,8 @@ void LyraTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const b
   drawLyraBatteryIcon(renderer, rect.x, rect.y + 6, LyraMetrics::values.batteryWidth, rect.height, percentage);
 }
 
-void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                           const TextRole titleRole, const TextRole subtitleRole) const {
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
 
   const bool showBatteryPercentage =
@@ -149,9 +150,12 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
                    Rect{batteryX, rect.y + 5, LyraMetrics::values.batteryWidth, LyraMetrics::values.batteryHeight},
                    showBatteryPercentage);
 
-  int maxTitleWidth = title != nullptr ? renderer.getTextWidth(UI_12_FONT_ID, title, EpdFontFamily::BOLD) : 0;
-  int maxSubtitleWidth =
-      subtitle != nullptr ? renderer.getTextWidth(SMALL_FONT_ID, subtitle, EpdFontFamily::REGULAR) : 0;
+  int maxTitleWidth =
+      title != nullptr ? getTextWidthForRole(renderer, UI_12_FONT_ID, titleRole, title, EpdFontFamily::BOLD) : 0;
+  int maxSubtitleWidth = subtitle != nullptr
+                             ? getTextWidthForRole(renderer, SMALL_FONT_ID, subtitleRole, subtitle,
+                                                   EpdFontFamily::REGULAR)
+                             : 0;
 
   // Available space is the distance between the side paddings, and a with side padding between title and subtitle.
   const int availableSpace = rect.width - LyraMetrics::values.contentSidePadding * 3;
@@ -172,19 +176,21 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   }
 
   if (title) {
-    auto truncatedTitle = renderer.truncatedText(UI_12_FONT_ID, title, maxTitleWidth, EpdFontFamily::BOLD);
-    renderer.drawText(UI_12_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding,
-                      rect.y + LyraMetrics::values.batteryBarHeight + 3, truncatedTitle.c_str(), true,
-                      EpdFontFamily::BOLD);
+    auto truncatedTitle =
+        truncatedTextForRole(renderer, UI_12_FONT_ID, titleRole, title, maxTitleWidth, EpdFontFamily::BOLD);
+    drawTextForRole(renderer, UI_12_FONT_ID, titleRole, rect.x + LyraMetrics::values.contentSidePadding,
+                    rect.y + LyraMetrics::values.batteryBarHeight + 3, truncatedTitle.c_str(), true,
+                    EpdFontFamily::BOLD);
     renderer.drawLine(rect.x, rect.y + rect.height - 3, rect.x + rect.width - 1, rect.y + rect.height - 3, 3, true);
   }
 
   if (subtitle) {
-    auto truncatedSubtitle = renderer.truncatedText(SMALL_FONT_ID, subtitle, maxSubtitleWidth, EpdFontFamily::REGULAR);
-    int truncatedSubtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, truncatedSubtitle.c_str());
-    renderer.drawText(SMALL_FONT_ID,
-                      rect.x + rect.width - LyraMetrics::values.contentSidePadding - truncatedSubtitleWidth,
-                      rect.y + 50, truncatedSubtitle.c_str(), true);
+    auto truncatedSubtitle =
+        truncatedTextForRole(renderer, SMALL_FONT_ID, subtitleRole, subtitle, maxSubtitleWidth, EpdFontFamily::REGULAR);
+    int truncatedSubtitleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, subtitleRole, truncatedSubtitle.c_str());
+    drawTextForRole(renderer, SMALL_FONT_ID, subtitleRole,
+                    rect.x + rect.width - LyraMetrics::values.contentSidePadding - truncatedSubtitleWidth, rect.y + 50,
+                    truncatedSubtitle.c_str(), true);
   }
 }
 
@@ -243,7 +249,8 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowTitle,
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
-                         const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
+                         const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                         const TextRole textRole) const {
   int rowHeight =
       (rowSubtitle != nullptr) ? LyraMetrics::values.listWithSubtitleRowHeight : LyraMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -293,14 +300,14 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     std::string valueText = "";
     if (rowValue != nullptr) {
       valueText = rowValue(i);
-      valueText = renderer.truncatedText(UI_10_FONT_ID, valueText.c_str(), maxListValueWidth);
-      valueWidth = renderer.getTextWidth(UI_10_FONT_ID, valueText.c_str()) + hPaddingInSelection;
+      valueText = truncatedTextForRole(renderer, UI_10_FONT_ID, textRole, valueText.c_str(), maxListValueWidth);
+      valueWidth = getTextWidthForRole(renderer, UI_10_FONT_ID, textRole, valueText.c_str()) + hPaddingInSelection;
       rowTextWidth -= valueWidth;
     }
 
     auto itemName = rowTitle(i);
-    auto item = renderer.truncatedText(UI_10_FONT_ID, itemName.c_str(), rowTextWidth);
-    renderer.drawText(UI_10_FONT_ID, textX, itemY + 7, item.c_str(), true);
+    auto item = truncatedTextForRole(renderer, UI_10_FONT_ID, textRole, itemName.c_str(), rowTextWidth);
+    drawTextForRole(renderer, UI_10_FONT_ID, textRole, textX, itemY + 7, item.c_str(), true);
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
@@ -314,8 +321,8 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     if (rowSubtitle != nullptr) {
       // Draw subtitle
       std::string subtitleText = rowSubtitle(i);
-      auto subtitle = renderer.truncatedText(SMALL_FONT_ID, subtitleText.c_str(), rowTextWidth);
-      renderer.drawText(SMALL_FONT_ID, textX, itemY + 30, subtitle.c_str(), true);
+      auto subtitle = truncatedTextForRole(renderer, SMALL_FONT_ID, textRole, subtitleText.c_str(), rowTextWidth);
+      drawTextForRole(renderer, SMALL_FONT_ID, textRole, textX, itemY + 30, subtitle.c_str(), true);
     }
 
     // Draw value
@@ -326,8 +333,9 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
             valueWidth + hPaddingInSelection, rowHeight, cornerRadius, Color::Black);
       }
 
-      renderer.drawText(UI_10_FONT_ID, rect.x + contentWidth - LyraMetrics::values.contentSidePadding - valueWidth,
-                        itemY + 6, valueText.c_str(), !(i == selectedIndex && highlightValue));
+      drawTextForRole(renderer, UI_10_FONT_ID, textRole,
+                      rect.x + contentWidth - LyraMetrics::values.contentSidePadding - valueWidth, itemY + 6,
+                      valueText.c_str(), !(i == selectedIndex && highlightValue));
     }
   }
 }
@@ -509,22 +517,26 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
                                hPaddingInSelection, cornerRadius, false, false, true, true, Color::LightGray);
     }
 
-    auto titleLines = renderer.wrappedText(UI_12_FONT_ID, book.title.c_str(), textWidth, 3, EpdFontFamily::BOLD);
+    auto titleLines = wrappedTextForRole(renderer, UI_12_FONT_ID, TextRole::UserContent, book.title.c_str(), textWidth,
+                                         3, EpdFontFamily::BOLD);
 
-    auto author = renderer.truncatedText(UI_10_FONT_ID, book.author.c_str(), textWidth);
-    const int titleLineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+    auto author =
+        truncatedTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, book.author.c_str(), textWidth);
+    const int titleLineHeight = getLineHeightForRole(renderer, UI_12_FONT_ID, TextRole::UserContent);
     const int titleBlockHeight = titleLineHeight * static_cast<int>(titleLines.size());
-    const int authorHeight = book.author.empty() ? 0 : (renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2);
+    const int authorLineHeight = getLineHeightForRole(renderer, UI_10_FONT_ID, TextRole::UserContent);
+    const int authorHeight = book.author.empty() ? 0 : (authorLineHeight * 3 / 2);
     const int totalBlockHeight = titleBlockHeight + authorHeight;
     int titleY = tileY + tileHeight / 2 - totalBlockHeight / 2;
     const int textX = tileX + hPaddingInSelection + coverWidth + LyraMetrics::values.verticalSpacing;
     for (const auto& line : titleLines) {
-      renderer.drawText(UI_12_FONT_ID, textX, titleY, line.c_str(), true, EpdFontFamily::BOLD);
+      drawTextForRole(renderer, UI_12_FONT_ID, TextRole::UserContent, textX, titleY, line.c_str(), true,
+                      EpdFontFamily::BOLD);
       titleY += titleLineHeight;
     }
     if (!book.author.empty()) {
-      titleY += renderer.getLineHeight(UI_10_FONT_ID) / 2;
-      renderer.drawText(UI_10_FONT_ID, textX, titleY, author.c_str(), true);
+      titleY += authorLineHeight / 2;
+      drawTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, textX, titleY, author.c_str(), true);
     }
   } else {
     drawEmptyRecents(renderer, rect);

@@ -162,7 +162,8 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
 
   // Show server name in header if available, otherwise generic title
   const char* headerTitle = server.name.empty() ? tr(STR_OPDS_BROWSER) : server.name.c_str();
-  renderer.drawCenteredText(UI_12_FONT_ID, 15, headerTitle, true, EpdFontFamily::BOLD);
+  const TextRole headerRole = server.name.empty() ? TextRole::System : TextRole::UserContent;
+  BaseTheme::drawCenteredTextForRole(renderer, UI_12_FONT_ID, headerRole, 15, headerTitle, true, EpdFontFamily::BOLD);
 
   if (state == BrowserState::CHECK_WIFI || state == BrowserState::LOADING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, statusMessage.c_str());
@@ -183,8 +184,10 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
 
   if (state == BrowserState::DOWNLOADING) {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 40, tr(STR_DOWNLOADING));
-    auto title = renderer.truncatedText(UI_10_FONT_ID, statusMessage.c_str(), pageWidth - 40);
-    renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 - 10, title.c_str());
+    auto title = BaseTheme::truncatedTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, statusMessage.c_str(),
+                                                 pageWidth - 40);
+    BaseTheme::drawCenteredTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, pageHeight / 2 - 10,
+                                       title.c_str());
     if (downloadTotal > 0) {
       GUI.drawProgressBar(renderer, Rect{50, pageHeight / 2 + 20, pageWidth - 100, 20}, downloadProgress,
                           downloadTotal);
@@ -209,9 +212,11 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
       const auto& entry = entries[i];
       std::string displayText = (entry.type == OpdsEntryType::NAVIGATION) ? "> " + entry.title : entry.title;
       if (entry.type == OpdsEntryType::BOOK && !entry.author.empty()) displayText += " - " + entry.author;
-      auto item = renderer.truncatedText(UI_10_FONT_ID, displayText.c_str(), pageWidth - 40);
-      renderer.drawText(UI_10_FONT_ID, 20, 60 + (i % PAGE_ITEMS) * 30, item.c_str(),
-                        i != static_cast<size_t>(selectorIndex));
+      auto item =
+          BaseTheme::truncatedTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, displayText.c_str(),
+                                          pageWidth - 40);
+      BaseTheme::drawTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, 20, 60 + (i % PAGE_ITEMS) * 30,
+                                 item.c_str(), i != static_cast<size_t>(selectorIndex));
     }
   }
   renderer.displayBuffer();

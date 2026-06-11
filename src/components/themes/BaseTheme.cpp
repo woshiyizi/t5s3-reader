@@ -4,6 +4,7 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -19,6 +20,57 @@ namespace {
 constexpr int homeMenuMargin = 20;
 constexpr int homeMarginTop = 30;
 constexpr int subtitleY = 738;
+
+uint8_t styleMaskForStyle(const EpdFontFamily::Style style) {
+  return static_cast<uint8_t>(1u << (static_cast<uint8_t>(style) & 0x03));
+}
+
+void ensureRoleTextReady(const GfxRenderer& renderer, const int fontId, const char* text,
+                         const EpdFontFamily::Style style) {
+  if (text == nullptr || text[0] == '\0' || !renderer.isSdCardFont(fontId)) {
+    return;
+  }
+  renderer.ensureSdCardFontReady(fontId, text, styleMaskForStyle(style));
+}
+
+int measureRoleTextWidth(const GfxRenderer& renderer, const int fontId, const char* text,
+                         const EpdFontFamily::Style style) {
+  if (text == nullptr || text[0] == '\0') {
+    return 0;
+  }
+
+  if (renderer.isSdCardFont(fontId)) {
+    return renderer.getTextAdvanceX(fontId, text, style);
+  }
+
+  return renderer.getTextWidth(fontId, text, style);
+}
+
+std::string truncatedPreparedText(const GfxRenderer& renderer, const int fontId, const char* text, const int maxWidth,
+                                  const EpdFontFamily::Style style) {
+  if (text == nullptr || maxWidth <= 0) {
+    return {};
+  }
+
+  std::string item = text;
+  const char* ellipsis = "\xe2\x80\xa6";
+  ensureRoleTextReady(renderer, fontId, item.c_str(), style);
+  ensureRoleTextReady(renderer, fontId, ellipsis, style);
+
+  if (measureRoleTextWidth(renderer, fontId, item.c_str(), style) <= maxWidth) {
+    return item;
+  }
+
+  while (!item.empty()) {
+    const std::string candidate = item + ellipsis;
+    if (measureRoleTextWidth(renderer, fontId, candidate.c_str(), style) < maxWidth) {
+      break;
+    }
+    utf8RemoveLastChar(item);
+  }
+
+  return item.empty() ? ellipsis : item + ellipsis;
+}
 
 // Helper: draw battery icon at given position
 void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight, uint16_t percentage) {
@@ -52,6 +104,126 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
   }
 }
 }  // namespace
+
+int BaseTheme::resolveTextFontId(const int systemFontId, const TextRole role) {
+  if (role == TextRole::UserContent) {
+    const int userContentFontId = SETTINGS.getUserContentFontId();
+    if (userContentFontId != 0) {
+      return userContentFontId;
+    }
+  }
+  return systemFontId;
+}
+
+int BaseTheme::getLineHeightForRole(const GfxRenderer& renderer, const int systemFontId, const TextRole role) {
+  return renderer.getLineHeight(resolveTextFontId(systemFontId, role));
+}
+
+int BaseTheme::getTextWidthForRole(const GfxRenderer& renderer, const int systemFontId, const TextRole role,
+                                   const char* text, const EpdFontFamily::Style style) {
+  if (text == nullptr) {
+    return 0;
+  }
+  const int fontId = resolveTextFontId(systemFontId, role);
+  ensureRoleTextReady(renderer, fontId, text, style);
+  return measureRoleTextWidth(renderer, fontId, text, style);
+}
+
+std::string BaseTheme::truncatedTextForRole(const GfxRenderer& renderer, const int systemFontId, const TextRole role,
+                                            const char* text, const int maxWidth, const EpdFontFamily::Style style) {
+  if (text == nullptr) {
+    return {};
+  }
+  const int fontId = resolveTextFontId(systemFontId, role);
+  return truncatedPreparedText(renderer, fontId, text, maxWidth, style);
+}
+
+std::vector<std::string> BaseTheme::wrappedTextForRole(const GfxRenderer& renderer, const int systemFontId,
+                                                       const TextRole role, const char* text, const int maxWidth,
+                                                       const int maxLines, const EpdFontFamily::Style style) {
+  if (text == nullptr) {
+    return {};
+  }
+  const int fontId = resolveTextFontId(systemFontId, role);
+  ensureRoleTextReady(renderer, fontId, text, style);
+
+  std::vector<std::string> lines;
+  if (maxWidth <= 0 || maxLines <= 0) {
+    return lines;
+  }
+
+  std::string remaining = text;
+  std::string currentLine;
+
+  while (!remaining.empty()) {
+    if (static_cast<int>(lines.size()) == maxLines - 1) {
+      const std::string lastContent = currentLine.empty() ? remaining : currentLine + " " + remaining;
+      lines.push_back(truncatedPreparedText(renderer, fontId, lastContent.c_str(), maxWidth, style));
+      return lines;
+    }
+
+    const size_t spacePos = remaining.find(' ');
+    std::string word;
+
+    if (spacePos == std::string::npos) {
+      word = remaining;
+      remaining.clear();
+    } else {
+      word = remaining.substr(0, spacePos);
+      remaining.erase(0, spacePos + 1);
+    }
+
+    const std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
+    if (measureRoleTextWidth(renderer, fontId, testLine.c_str(), style) <= maxWidth) {
+      currentLine = testLine;
+      continue;
+    }
+
+    if (!currentLine.empty()) {
+      lines.push_back(currentLine);
+      if (measureRoleTextWidth(renderer, fontId, word.c_str(), style) > maxWidth) {
+        lines.push_back(truncatedPreparedText(renderer, fontId, word.c_str(), maxWidth, style));
+        currentLine.clear();
+        if (static_cast<int>(lines.size()) >= maxLines) {
+          return lines;
+        }
+      } else {
+        currentLine = word;
+      }
+    } else {
+      lines.push_back(truncatedPreparedText(renderer, fontId, word.c_str(), maxWidth, style));
+      return lines;
+    }
+  }
+
+  if (!currentLine.empty() && static_cast<int>(lines.size()) < maxLines) {
+    lines.push_back(currentLine);
+  }
+
+  return lines;
+}
+
+void BaseTheme::drawTextForRole(const GfxRenderer& renderer, const int systemFontId, const TextRole role, const int x,
+                                const int y, const char* text, const bool black,
+                                const EpdFontFamily::Style style) {
+  if (text == nullptr) {
+    return;
+  }
+  const int fontId = resolveTextFontId(systemFontId, role);
+  renderer.drawText(fontId, x, y, text, black, style);
+}
+
+void BaseTheme::drawCenteredTextForRole(const GfxRenderer& renderer, const int systemFontId, const TextRole role,
+                                        const int y, const char* text, const bool black,
+                                        const EpdFontFamily::Style style) {
+  if (text == nullptr) {
+    return;
+  }
+  const int fontId = resolveTextFontId(systemFontId, role);
+  ensureRoleTextReady(renderer, fontId, text, style);
+  const int textWidth = measureRoleTextWidth(renderer, fontId, text, style);
+  renderer.drawText(fontId, (renderer.getScreenWidth() - textWidth) / 2, y, text, black, style);
+}
 
 void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
   // Top line
@@ -253,7 +425,10 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowTitle,
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
-                         const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
+                         const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                         const TextRole textRole) const {
+  (void)rowIcon;
+  (void)highlightValue;
   int rowHeight =
       (rowSubtitle != nullptr) ? BaseMetrics::values.listWithSubtitleRowHeight : BaseMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -298,28 +473,31 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     // Draw name
     auto itemName = rowTitle(i);
     auto font = (rowSubtitle != nullptr) ? UI_12_FONT_ID : UI_10_FONT_ID;
-    auto item = renderer.truncatedText(font, itemName.c_str(), textWidth);
-    renderer.drawText(font, rect.x + BaseMetrics::values.contentSidePadding, itemY, item.c_str(), i != selectedIndex);
+    auto item = truncatedTextForRole(renderer, font, textRole, itemName.c_str(), textWidth);
+    drawTextForRole(renderer, font, textRole, rect.x + BaseMetrics::values.contentSidePadding, itemY, item.c_str(),
+                    i != selectedIndex);
 
     if (rowSubtitle != nullptr) {
       // Draw subtitle
       std::string subtitleText = rowSubtitle(i);
-      auto subtitle = renderer.truncatedText(UI_10_FONT_ID, subtitleText.c_str(), textWidth);
-      renderer.drawText(UI_10_FONT_ID, rect.x + BaseMetrics::values.contentSidePadding, itemY + 30, subtitle.c_str(),
-                        i != selectedIndex);
+      auto subtitle = truncatedTextForRole(renderer, UI_10_FONT_ID, textRole, subtitleText.c_str(), textWidth);
+      drawTextForRole(renderer, UI_10_FONT_ID, textRole, rect.x + BaseMetrics::values.contentSidePadding, itemY + 30,
+                      subtitle.c_str(), i != selectedIndex);
     }
 
     if (rowValue != nullptr) {
       // Draw value
       std::string valueText = rowValue(i);
-      const auto valueTextWidth = renderer.getTextWidth(UI_10_FONT_ID, valueText.c_str());
-      renderer.drawText(UI_10_FONT_ID, rect.x + contentWidth - BaseMetrics::values.contentSidePadding - valueTextWidth,
-                        itemY, valueText.c_str(), i != selectedIndex);
+      const auto valueTextWidth = getTextWidthForRole(renderer, UI_10_FONT_ID, textRole, valueText.c_str());
+      drawTextForRole(renderer, UI_10_FONT_ID, textRole,
+                      rect.x + contentWidth - BaseMetrics::values.contentSidePadding - valueTextWidth, itemY,
+                      valueText.c_str(), i != selectedIndex);
     }
   }
 }
 
-void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle) const {
+void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                           const TextRole titleRole, const TextRole subtitleRole) const {
   // Hide last battery draw
   constexpr int maxBatteryWidth = 80;
   renderer.fillRect(rect.x + rect.width - maxBatteryWidth, rect.y + 5, maxBatteryWidth,
@@ -337,19 +515,24 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
     const int titleAreaX = rect.x + BaseMetrics::values.contentSidePadding;
     const int titleAreaRight = batteryX - 12;
     const int titleAreaWidth = std::max(0, titleAreaRight - titleAreaX);
-    auto truncatedTitle = renderer.truncatedText(UI_12_FONT_ID, title, titleAreaWidth, EpdFontFamily::BOLD);
-    const int titleWidth = renderer.getTextWidth(UI_12_FONT_ID, truncatedTitle.c_str(), EpdFontFamily::BOLD);
+    auto truncatedTitle =
+        truncatedTextForRole(renderer, UI_12_FONT_ID, titleRole, title, titleAreaWidth, EpdFontFamily::BOLD);
+    const int titleWidth =
+        getTextWidthForRole(renderer, UI_12_FONT_ID, titleRole, truncatedTitle.c_str(), EpdFontFamily::BOLD);
     const int titleX = titleAreaX + std::max(0, (titleAreaWidth - titleWidth) / 2);
-    renderer.drawText(UI_12_FONT_ID, titleX, rect.y + 5, truncatedTitle.c_str(), true, EpdFontFamily::BOLD);
+    drawTextForRole(renderer, UI_12_FONT_ID, titleRole, titleX, rect.y + 5, truncatedTitle.c_str(), true,
+                    EpdFontFamily::BOLD);
   }
 
   if (subtitle) {
-    auto truncatedSubtitle = renderer.truncatedText(
-        SMALL_FONT_ID, subtitle, rect.width - BaseMetrics::values.contentSidePadding * 2, EpdFontFamily::REGULAR);
-    int truncatedSubtitleWidth = renderer.getTextWidth(SMALL_FONT_ID, truncatedSubtitle.c_str());
-    renderer.drawText(SMALL_FONT_ID,
-                      rect.x + rect.width - BaseMetrics::values.contentSidePadding - truncatedSubtitleWidth, subtitleY,
-                      truncatedSubtitle.c_str(), true);
+    auto truncatedSubtitle = truncatedTextForRole(renderer, SMALL_FONT_ID, subtitleRole, subtitle,
+                                                  rect.width - BaseMetrics::values.contentSidePadding * 2,
+                                                  EpdFontFamily::REGULAR);
+    int truncatedSubtitleWidth =
+        getTextWidthForRole(renderer, SMALL_FONT_ID, subtitleRole, truncatedSubtitle.c_str());
+    drawTextForRole(renderer, SMALL_FONT_ID, subtitleRole,
+                    rect.x + rect.width - BaseMetrics::values.contentSidePadding - truncatedSubtitleWidth, subtitleY,
+                    truncatedSubtitle.c_str(), true);
   }
 }
 
@@ -554,12 +737,15 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     // - With cover: selected = white text on black box, unselected = black text on white box
     // - Without cover: selected = white text on black card, unselected = black text on white card
 
-    auto lines = renderer.wrappedText(UI_12_FONT_ID, lastBookTitle.c_str(), bookWidth - 40, 3);
+    auto lines = wrappedTextForRole(renderer, UI_12_FONT_ID, TextRole::UserContent, lastBookTitle.c_str(),
+                                    bookWidth - 40, 3);
 
     // Book title text
-    int totalTextHeight = renderer.getLineHeight(UI_12_FONT_ID) * static_cast<int>(lines.size());
+    const int titleLineHeight = getLineHeightForRole(renderer, UI_12_FONT_ID, TextRole::UserContent);
+    const int authorLineHeight = getLineHeightForRole(renderer, UI_10_FONT_ID, TextRole::UserContent);
+    int totalTextHeight = titleLineHeight * static_cast<int>(lines.size());
     if (!lastBookAuthor.empty()) {
-      totalTextHeight += renderer.getLineHeight(UI_10_FONT_ID) * 3 / 2;
+      totalTextHeight += authorLineHeight * 3 / 2;
     }
 
     // Vertically center the title block within the card
@@ -567,7 +753,8 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
     const auto truncatedAuthor = lastBookAuthor.empty()
                                      ? std::string{}
-                                     : renderer.truncatedText(UI_10_FONT_ID, lastBookAuthor.c_str(), bookWidth - 40);
+                                     : truncatedTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent,
+                                                            lastBookAuthor.c_str(), bookWidth - 40);
 
     // If cover image was rendered, draw box behind title and author
     if (coverRendered) {
@@ -575,13 +762,14 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
       // Calculate the max text width for the box
       int maxTextWidth = 0;
       for (const auto& line : lines) {
-        const int lineWidth = renderer.getTextWidth(UI_12_FONT_ID, line.c_str());
+        const int lineWidth = getTextWidthForRole(renderer, UI_12_FONT_ID, TextRole::UserContent, line.c_str());
         if (lineWidth > maxTextWidth) {
           maxTextWidth = lineWidth;
         }
       }
       if (!truncatedAuthor.empty()) {
-        const int authorWidth = renderer.getTextWidth(UI_10_FONT_ID, truncatedAuthor.c_str());
+        const int authorWidth =
+            getTextWidthForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, truncatedAuthor.c_str());
         if (authorWidth > maxTextWidth) {
           maxTextWidth = authorWidth;
         }
@@ -599,13 +787,15 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     }
 
     for (const auto& line : lines) {
-      renderer.drawCenteredText(UI_12_FONT_ID, titleYStart, line.c_str(), !bookSelected);
-      titleYStart += renderer.getLineHeight(UI_12_FONT_ID);
+      drawCenteredTextForRole(renderer, UI_12_FONT_ID, TextRole::UserContent, titleYStart, line.c_str(),
+                              !bookSelected);
+      titleYStart += titleLineHeight;
     }
 
     if (!truncatedAuthor.empty()) {
-      titleYStart += renderer.getLineHeight(UI_10_FONT_ID) / 2;
-      renderer.drawCenteredText(UI_10_FONT_ID, titleYStart, truncatedAuthor.c_str(), !bookSelected);
+      titleYStart += authorLineHeight / 2;
+      drawCenteredTextForRole(renderer, UI_10_FONT_ID, TextRole::UserContent, titleYStart, truncatedAuthor.c_str(),
+                              !bookSelected);
     }
 
     // "Continue Reading" label at the bottom
@@ -697,8 +887,8 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 }
 
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
-                              const int pageCount, std::string title, const int paddingBottom,
-                              const int textYOffset) const {
+                              const int pageCount, std::string title, const int paddingBottom, const int textYOffset,
+                              const TextRole titleRole) const {
   auto metrics = UITheme::getInstance().getMetrics();
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
@@ -708,7 +898,7 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   const auto screenHeight = renderer.getScreenHeight();
   int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   if (!title.empty()) {
-    statusBarHeight = std::max(statusBarHeight, renderer.getLineHeight(SMALL_FONT_ID));
+    statusBarHeight = std::max(statusBarHeight, getLineHeightForRole(renderer, SMALL_FONT_ID, titleRole));
   }
   if (statusBarHeight > 0) {
     const int clearTop = std::max(0, screenHeight - statusBarHeight - orientedMarginBottom - paddingBottom - 4);
@@ -780,22 +970,21 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     int titleMarginLeftAdjusted = std::max(titleMarginLeft, titleMarginRight);
     int availableTitleSpace = rendererableScreenWidth - 2 * titleMarginLeftAdjusted;
 
-    int titleWidth;
-    titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
+    int titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
     if (titleWidth > availableTitleSpace) {
       // Not enough space to center on the screen, center it within the remaining space instead
       availableTitleSpace = rendererableScreenWidth - titleMarginLeft - titleMarginRight;
       titleMarginLeftAdjusted = titleMarginLeft;
     }
     if (titleWidth > availableTitleSpace) {
-      title = renderer.truncatedText(SMALL_FONT_ID, title.c_str(), availableTitleSpace);
-      titleWidth = renderer.getTextWidth(SMALL_FONT_ID, title.c_str());
+      title = truncatedTextForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str(), availableTitleSpace);
+      titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
     }
 
-    renderer.drawText(SMALL_FONT_ID,
-                      titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
-                          (availableTitleSpace - titleWidth) / 2,
-                      textY, title.c_str());
+    drawTextForRole(renderer, SMALL_FONT_ID, titleRole,
+                    titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
+                        (availableTitleSpace - titleWidth) / 2,
+                    textY, title.c_str());
   }
 }
 

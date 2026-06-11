@@ -344,6 +344,14 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
+int CrossPointSettings::getUserContentFontId() const {
+  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver != nullptr) {
+    return sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, SD_FONT_UI_CONTENT_ROLE);
+  }
+
+  return 0;
+}
+
 int CrossPointSettings::getReaderFontId() const {
   if (sdFontFamilyName[0] != '\0' && sdFontIdResolver != nullptr) {
     const int sdFontId = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, fontSize);

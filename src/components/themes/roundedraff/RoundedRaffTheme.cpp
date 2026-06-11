@@ -97,9 +97,10 @@ std::string sanitizeButtonLabel(std::string label) {
 }  // namespace
 int coverWidth = 0;
 
-void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
-                                  const char* subtitle) const {
+void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
+                                  const TextRole titleRole, const TextRole subtitleRole) const {
   (void)subtitle;
+  (void)subtitleRole;
   // Home screen header is custom-rendered in drawRecentBookCover.
   if (title == nullptr) {
     return;
@@ -126,8 +127,9 @@ void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const 
   }
 
   const int maxTextWidth = std::max(0, batteryGroupLeftX - 20 - titleX);
-  auto headerTitle = renderer.truncatedText(kTitleFontId, title, maxTextWidth, EpdFontFamily::BOLD);
-  renderer.drawText(kTitleFontId, titleX, titleY, headerTitle.c_str(), true, EpdFontFamily::BOLD);
+  auto headerTitle = truncatedTextForRole(renderer, kTitleFontId, titleRole, title, maxTextWidth, EpdFontFamily::BOLD);
+  drawTextForRole(renderer, kTitleFontId, titleRole, titleX, titleY, headerTitle.c_str(), true,
+                  EpdFontFamily::BOLD);
   drawBatteryRightStable(renderer,
                          Rect{batteryIconX, rect.y + 14, RoundedRaffMetrics::values.batteryWidth,
                               RoundedRaffMetrics::values.batteryHeight},
@@ -286,12 +288,13 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
                                 const std::function<std::string(int index)>& rowTitle,
                                 const std::function<std::string(int index)>& rowSubtitle,
                                 const std::function<UIIcon(int index)>& rowIcon,
-                                const std::function<std::string(int index)>& rowValue, bool highlightValue) const {
+                                const std::function<std::string(int index)>& rowValue, bool highlightValue,
+                                const TextRole textRole) const {
   (void)rowIcon;
   (void)highlightValue;
   const bool hasSubtitle = static_cast<bool>(rowSubtitle);
-  const int titleLineHeight = renderer.getLineHeight(kTitleFontId);
-  const int subtitleLineHeight = renderer.getLineHeight(kSubtitleFontId);
+  const int titleLineHeight = getLineHeightForRole(renderer, kTitleFontId, textRole);
+  const int subtitleLineHeight = getLineHeightForRole(renderer, kSubtitleFontId, textRole);
   constexpr int subtitleTopPadding = 10;
   constexpr int subtitleBottomPadding = 10;
   constexpr int subtitleInterLineGap = 4;
@@ -319,12 +322,13 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
       if (!valueText.empty()) {
         const int maxValueWidth = std::max(0, rowWidth - kInteractiveInsetX * 2 - kMinValueGap - kMinTitleWidth);
         if (maxValueWidth > 0) {
-          const std::string truncatedValue =
-              renderer.truncatedText(kTitleFontId, valueText.c_str(), maxValueWidth, EpdFontFamily::REGULAR);
-          const int valueW = renderer.getTextWidth(kTitleFontId, truncatedValue.c_str(), EpdFontFamily::REGULAR);
-          renderer.drawText(kTitleFontId, rowX + rowWidth - kInteractiveInsetX - valueW,
-                            rowY + (rowHeight - renderer.getLineHeight(kTitleFontId)) / 2, truncatedValue.c_str(),
-                            !isSelected, EpdFontFamily::REGULAR);
+          const std::string truncatedValue = truncatedTextForRole(renderer, kTitleFontId, textRole, valueText.c_str(),
+                                                                  maxValueWidth, EpdFontFamily::REGULAR);
+          const int valueW =
+              getTextWidthForRole(renderer, kTitleFontId, textRole, truncatedValue.c_str(), EpdFontFamily::REGULAR);
+          drawTextForRole(renderer, kTitleFontId, textRole, rowX + rowWidth - kInteractiveInsetX - valueW,
+                          rowY + (rowHeight - titleLineHeight) / 2, truncatedValue.c_str(), !isSelected,
+                          EpdFontFamily::REGULAR);
           textAreaWidth = std::max(0, textAreaWidth - valueW - kMinValueGap);
         }
       }
@@ -332,28 +336,29 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
 
     if (hasSubtitle) {
       const std::string subtitleRaw = rowSubtitle(i);
-      auto title = renderer.truncatedText(kTitleFontId, rowTitle(i).c_str(), textAreaWidth, EpdFontFamily::BOLD);
+      auto title =
+          truncatedTextForRole(renderer, kTitleFontId, textRole, rowTitle(i).c_str(), textAreaWidth, EpdFontFamily::BOLD);
 
       if (subtitleRaw.empty()) {
         // If there is no subtitle/author, center title vertically in the full row.
         const int centeredTitleY = rowY + (rowHeight - titleLineHeight) / 2;
-        renderer.drawText(kTitleFontId, rowX + kInteractiveInsetX, centeredTitleY, title.c_str(), !isSelected,
-                          EpdFontFamily::BOLD);
+        drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX, centeredTitleY, title.c_str(),
+                        !isSelected, EpdFontFamily::BOLD);
       } else {
         const int titleY = rowY + subtitleTopPadding;
         const int subtitleY = titleY + titleLineHeight + subtitleInterLineGap;
-        auto subtitle =
-            renderer.truncatedText(kSubtitleFontId, subtitleRaw.c_str(), textAreaWidth, EpdFontFamily::REGULAR);
-        renderer.drawText(kTitleFontId, rowX + kInteractiveInsetX, titleY, title.c_str(), !isSelected,
-                          EpdFontFamily::BOLD);
-        renderer.drawText(kSubtitleFontId, rowX + kInteractiveInsetX, subtitleY, subtitle.c_str(), !isSelected,
-                          EpdFontFamily::REGULAR);
+        auto subtitle = truncatedTextForRole(renderer, kSubtitleFontId, textRole, subtitleRaw.c_str(), textAreaWidth,
+                                             EpdFontFamily::REGULAR);
+        drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX, titleY, title.c_str(),
+                        !isSelected, EpdFontFamily::BOLD);
+        drawTextForRole(renderer, kSubtitleFontId, textRole, rowX + kInteractiveInsetX, subtitleY, subtitle.c_str(),
+                        !isSelected, EpdFontFamily::REGULAR);
       }
     } else {
-      auto title = renderer.truncatedText(kTitleFontId, rowTitle(i).c_str(), textAreaWidth, EpdFontFamily::BOLD);
-      renderer.drawText(kTitleFontId, rowX + kInteractiveInsetX,
-                        rowY + (rowHeight - renderer.getLineHeight(kTitleFontId)) / 2, title.c_str(), !isSelected,
-                        EpdFontFamily::BOLD);
+      auto title =
+          truncatedTextForRole(renderer, kTitleFontId, textRole, rowTitle(i).c_str(), textAreaWidth, EpdFontFamily::BOLD);
+      drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX,
+                      rowY + (rowHeight - titleLineHeight) / 2, title.c_str(), !isSelected, EpdFontFamily::BOLD);
     }
   }
 

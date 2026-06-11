@@ -183,7 +183,9 @@ void FileBrowserActivity::loop() {
     return;
   }
 
-  const int pathReserved = renderer.getLineHeight(SMALL_FONT_ID) + UITheme::getInstance().getMetrics().verticalSpacing;
+  const int pathReserved =
+      BaseTheme::getLineHeightForRole(renderer, SMALL_FONT_ID, TextRole::UserContent) +
+      UITheme::getInstance().getMetrics().verticalSpacing;
   const int pageItems = UITheme::getNumberOfItemsPerPage(renderer, true, false, true, false, pathReserved);
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
@@ -268,7 +270,7 @@ bool FileBrowserActivity::onTouchTap(int16_t, int16_t y) {
 
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int pathLineHeight = BaseTheme::getLineHeightForRole(renderer, SMALL_FONT_ID, TextRole::UserContent);
   const int pathReserved = pathLineHeight + metrics.verticalSpacing;
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =
@@ -327,9 +329,12 @@ void FileBrowserActivity::render(RenderLock&&) {
       (mode == Mode::PickFirmware)
           ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
           : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
+  const TextRole folderTitleRole =
+      (mode == Mode::PickFirmware || basepath == "/") ? TextRole::System : TextRole::UserContent;
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str(), nullptr,
+                 folderTitleRole);
 
-  const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+  const int pathLineHeight = BaseTheme::getLineHeightForRole(renderer, SMALL_FONT_ID, TextRole::UserContent);
   const int pathReserved = pathLineHeight + metrics.verticalSpacing;
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =
@@ -342,7 +347,7 @@ void FileBrowserActivity::render(RenderLock&&) {
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
         [this](int index) { return getFileName(files[index]); }, nullptr,
         [this](int index) { return UITheme::getFileIcon(files[index]); },
-        [this](int index) { return getFileExtension(files[index]); }, false);
+        [this](int index) { return getFileExtension(files[index]); }, false, TextRole::UserContent);
   }
 
   // Full path display
@@ -355,21 +360,23 @@ void FileBrowserActivity::render(RenderLock&&) {
     const char* pathStr = basepath.c_str();
     const char* pathDisplay = pathStr;
     char leftTruncBuf[256];
-    if (renderer.getTextWidth(SMALL_FONT_ID, pathStr) > pathMaxWidth) {
+    if (BaseTheme::getTextWidthForRole(renderer, SMALL_FONT_ID, TextRole::UserContent, pathStr) > pathMaxWidth) {
       const char ellipsis[] = "\xe2\x80\xa6";  // UTF-8 ellipsis (…)
-      const int ellipsisWidth = renderer.getTextWidth(SMALL_FONT_ID, ellipsis);
+      const int ellipsisWidth =
+          BaseTheme::getTextWidthForRole(renderer, SMALL_FONT_ID, TextRole::UserContent, ellipsis);
       const int available = pathMaxWidth - ellipsisWidth;
       // Walk forward from the start until the suffix fits, skipping UTF-8 continuation bytes
       const char* p = pathStr;
       while (*p) {
-        if (renderer.getTextWidth(SMALL_FONT_ID, p) <= available) break;
+        if (BaseTheme::getTextWidthForRole(renderer, SMALL_FONT_ID, TextRole::UserContent, p) <= available) break;
         ++p;
         while (*p && (static_cast<unsigned char>(*p) & 0xC0) == 0x80) ++p;
       }
       snprintf(leftTruncBuf, sizeof(leftTruncBuf), "%s%s", ellipsis, p);
       pathDisplay = leftTruncBuf;
     }
-    renderer.drawText(SMALL_FONT_ID, metrics.contentSidePadding, pathY, pathDisplay);
+    BaseTheme::drawTextForRole(renderer, SMALL_FONT_ID, TextRole::UserContent, metrics.contentSidePadding, pathY,
+                               pathDisplay);
   }
 
   // Help text

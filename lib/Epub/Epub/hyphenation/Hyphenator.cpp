@@ -154,6 +154,47 @@ void appendApostropheContractionBreaks(const std::vector<CodepointInfo>& cps,
   }
 }
 
+bool isFullwidthDigit(const uint32_t cp) { return cp >= 0xFF10 && cp <= 0xFF19; }
+
+bool isUnbreakableAsciiRunCodepoint(const uint32_t cp) {
+  return isAlphabetic(cp) || isAsciiDigit(cp) || isFullwidthDigit(cp);
+}
+
+bool isValidCjkBreakBoundary(const std::vector<CodepointInfo>& cps, const size_t breakIndex) {
+  if (breakIndex == 0 || breakIndex >= cps.size()) {
+    return false;
+  }
+
+  const uint32_t left = cps[breakIndex - 1].value;
+  const uint32_t right = cps[breakIndex].value;
+
+  if (isCjkOpeningPunctuation(left) || isCjkClosingPunctuation(right)) {
+    return false;
+  }
+
+  if (isUnbreakableAsciiRunCodepoint(left) && isUnbreakableAsciiRunCodepoint(right)) {
+    return false;
+  }
+
+  return true;
+}
+
+std::vector<Hyphenator::BreakInfo> buildCjkBreakInfos(const std::vector<CodepointInfo>& cps) {
+  std::vector<Hyphenator::BreakInfo> breaks;
+  if (cps.size() < 2) {
+    return breaks;
+  }
+
+  for (size_t i = 1; i < cps.size(); ++i) {
+    if (!isValidCjkBreakBoundary(cps, i)) {
+      continue;
+    }
+    breaks.push_back({cps[i].byteOffset, false});
+  }
+
+  return breaks;
+}
+
 void sortAndDedupeBreakInfos(std::vector<Hyphenator::BreakInfo>& infos) {
   std::sort(infos.begin(), infos.end(), [](const Hyphenator::BreakInfo& a, const Hyphenator::BreakInfo& b) {
     if (a.byteOffset != b.byteOffset) {
@@ -218,6 +259,13 @@ std::vector<Hyphenator::BreakInfo> Hyphenator::breakOffsets(const std::string& w
     // Merge all break points into ascending byte-offset order.
     sortAndDedupeBreakInfos(explicitBreakInfos);
     return explicitBreakInfos;
+  }
+
+  if (containsCjk(cps)) {
+    auto cjkBreaks = buildCjkBreakInfos(cps);
+    if (!cjkBreaks.empty()) {
+      return cjkBreaks;
+    }
   }
 
   // Apostrophe-like separators split compounds into alphabetic segments; run Liang on each segment.
