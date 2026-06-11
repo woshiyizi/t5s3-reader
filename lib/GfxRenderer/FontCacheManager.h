@@ -20,6 +20,11 @@ class FontCacheManager {
   void logStats(const char* label = "render");
   void resetStats();
 
+  // Text collection API used by scan passes and targeted UI prewarm.
+  void resetRecordedText();
+  void prewarmRecordedText();
+  bool hasRecordedText() const;
+
   // Scan-mode API: called by GfxRenderer::drawText() during scan pass
   bool isScanning() const;
   void recordText(const char* text, int fontId, EpdFontFamily::Style style);
@@ -45,13 +50,16 @@ class FontCacheManager {
   PrewarmScope createPrewarmScope();
 
  private:
+  struct RecordedTextEntry {
+    std::string text;
+    uint32_t styleCounts[4] = {};
+  };
+
   const std::map<int, EpdFontFamily>& fontMap_;
   const std::map<int, SdCardFont*>& sdCardFonts_;
   FontDecompressor* fontDecompressor_ = nullptr;
 
   enum class ScanMode : uint8_t { None, Scanning };
   ScanMode scanMode_ = ScanMode::None;
-  std::string scanText_;
-  uint32_t scanStyleCounts_[4] = {};
-  int scanFontId_ = -1;
+  std::map<int, RecordedTextEntry> recordedTextByFont_;
 };

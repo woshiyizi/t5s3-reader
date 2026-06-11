@@ -2,6 +2,7 @@
 
 #include <Bitmap.h>
 #include <Epub.h>
+#include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -19,6 +20,26 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+
+namespace {
+constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
+
+void appendTextKey(std::string& key, const std::string& text) {
+  if (text.empty()) {
+    return;
+  }
+  key.push_back('\n');
+  key += text;
+}
+
+void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const char* text,
+                           const EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  if (fcm == nullptr || text == nullptr || text[0] == '\0') {
+    return;
+  }
+  fcm->recordText(text, BaseTheme::resolveTextFontId(systemFontId, TextRole::UserContent), style);
+}
+}  // namespace
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Recents, File transfer, Settings
@@ -137,6 +158,7 @@ void HomeActivity::onEnter() {
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
+  lastVisibleTextPrewarmKey.clear();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
@@ -151,6 +173,7 @@ void HomeActivity::onExit() {
 
   // Free the stored cover buffer if any
   freeCoverBuffer();
+  lastVisibleTextPrewarmKey.clear();
 }
 
 bool HomeActivity::storeCoverBuffer() {
@@ -258,6 +281,29 @@ void HomeActivity::render(RenderLock&&) {
 
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
+
+  std::string visibleTextKey;
+  if (!recentBooks.empty()) {
+    appendTextKey(visibleTextKey, recentBooks[0].title);
+    appendTextKey(visibleTextKey, recentBooks[0].author);
+  }
+
+  if (auto* fcm = renderer.getFontCacheManager();
+      fcm != nullptr && visibleTextKey != lastVisibleTextPrewarmKey) {
+    fcm->resetRecordedText();
+    if (!recentBooks.empty()) {
+      recordUserContentText(fcm, UI_12_FONT_ID, recentBooks[0].title.c_str());
+      recordUserContentText(fcm, UI_10_FONT_ID, recentBooks[0].author.c_str());
+      recordUserContentText(fcm, UI_12_FONT_ID, UTF8_ELLIPSIS);
+      recordUserContentText(fcm, UI_10_FONT_ID, UTF8_ELLIPSIS);
+      if (metrics.homeContinueReadingInMenu) {
+        recordUserContentText(fcm, UI_12_FONT_ID, recentBooks[0].title.c_str(), EpdFontFamily::BOLD);
+        recordUserContentText(fcm, UI_12_FONT_ID, UTF8_ELLIPSIS, EpdFontFamily::BOLD);
+      }
+    }
+    fcm->prewarmRecordedText();
+    lastVisibleTextPrewarmKey = visibleTextKey;
+  }
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,

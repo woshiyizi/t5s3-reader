@@ -1,5 +1,6 @@
 #include "RecentBooksActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -13,6 +14,22 @@
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
+constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
+
+void appendTextKey(std::string& key, const std::string& text) {
+  if (text.empty()) {
+    return;
+  }
+  key.push_back('\n');
+  key += text;
+}
+
+void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const char* text) {
+  if (fcm == nullptr || text == nullptr || text[0] == '\0') {
+    return;
+  }
+  fcm->recordText(text, BaseTheme::resolveTextFontId(systemFontId, TextRole::UserContent), EpdFontFamily::REGULAR);
+}
 }  // namespace
 
 void RecentBooksActivity::loadRecentBooks() {
@@ -36,12 +53,14 @@ void RecentBooksActivity::onEnter() {
   loadRecentBooks();
 
   selectorIndex = 0;
+  lastVisibleTextPrewarmKey.clear();
   requestUpdate();
 }
 
 void RecentBooksActivity::onExit() {
   Activity::onExit();
   recentBooks.clear();
+  lastVisibleTextPrewarmKey.clear();
 }
 
 void RecentBooksActivity::loop() {
@@ -123,6 +142,34 @@ void RecentBooksActivity::render(RenderLock&&) {
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
+  const int pageItems = std::max(1, contentHeight / std::max(1, metrics.listWithSubtitleRowHeight));
+
+  std::string visibleTextKey;
+  if (!recentBooks.empty()) {
+    const size_t pageStartIndex = (selectorIndex / static_cast<size_t>(pageItems)) * static_cast<size_t>(pageItems);
+    const size_t pageEndIndex = std::min(recentBooks.size(), pageStartIndex + static_cast<size_t>(pageItems));
+    for (size_t i = pageStartIndex; i < pageEndIndex; ++i) {
+      appendTextKey(visibleTextKey, recentBooks[i].title);
+      appendTextKey(visibleTextKey, recentBooks[i].author);
+    }
+  }
+
+  if (auto* fcm = renderer.getFontCacheManager();
+      fcm != nullptr && visibleTextKey != lastVisibleTextPrewarmKey) {
+    fcm->resetRecordedText();
+    recordUserContentText(fcm, UI_12_FONT_ID, UTF8_ELLIPSIS);
+    recordUserContentText(fcm, UI_10_FONT_ID, UTF8_ELLIPSIS);
+    if (!recentBooks.empty()) {
+      const size_t pageStartIndex = (selectorIndex / static_cast<size_t>(pageItems)) * static_cast<size_t>(pageItems);
+      const size_t pageEndIndex = std::min(recentBooks.size(), pageStartIndex + static_cast<size_t>(pageItems));
+      for (size_t i = pageStartIndex; i < pageEndIndex; ++i) {
+        recordUserContentText(fcm, UI_12_FONT_ID, recentBooks[i].title.c_str());
+        recordUserContentText(fcm, UI_10_FONT_ID, recentBooks[i].author.c_str());
+      }
+    }
+    fcm->prewarmRecordedText();
+    lastVisibleTextPrewarmKey = visibleTextKey;
+  }
 
   // Recent tab
   if (recentBooks.empty()) {

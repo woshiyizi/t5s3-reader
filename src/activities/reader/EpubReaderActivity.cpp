@@ -33,6 +33,7 @@ namespace {
 constexpr unsigned long skipChapterMs = 700;
 // pages per minute, first item is 1 to prevent division by zero if accessed
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
+constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
 
 int clampPercent(int percent) {
   if (percent < 0) {
@@ -804,6 +805,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   auto scope = fcm->createPrewarmScope();
   page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop,
                false);  // scan pass: text only, skip image decode/caching
+  std::string statusTitle;
+  TextRole statusTitleRole = TextRole::System;
+  int statusTextYOffset = 0;
+  buildStatusBarTitle(statusTitle, statusTitleRole, statusTextYOffset);
+  if (!statusTitle.empty()) {
+    const int statusFontId = BaseTheme::resolveTextFontId(SMALL_FONT_ID, statusTitleRole);
+    fcm->recordText(statusTitle.c_str(), statusFontId, EpdFontFamily::REGULAR);
+    fcm->recordText(UTF8_ELLIPSIS, statusFontId, EpdFontFamily::REGULAR);
+  }
   scope.endScanAndPrewarm();
   const uint32_t heapAfter = esp_get_free_heap_size();
   fcm->logStats("prewarm");
@@ -926,6 +936,39 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
 }
 
+void EpubReaderActivity::buildStatusBarTitle(std::string& title, TextRole& titleRole, int& textYOffset) const {
+  title.clear();
+  titleRole = TextRole::System;
+  textYOffset = 0;
+
+  if (automaticPageTurnActive) {
+    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
+
+    // Offset the title when the visible status bar is collapsed.
+    const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+    if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
+      textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
+    }
+    return;
+  }
+
+  if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
+    title = tr(STR_UNNAMED);
+    const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
+    if (tocIndex != -1) {
+      const auto tocItem = epub->getTocItem(tocIndex);
+      title = tocItem.title;
+      titleRole = tocItem.title.empty() ? TextRole::System : TextRole::UserContent;
+    }
+    return;
+  }
+
+  if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
+    title = epub->getTitle();
+    titleRole = title.empty() ? TextRole::System : TextRole::UserContent;
+  }
+}
+
 void EpubReaderActivity::renderStatusBar() const {
   // Calculate progress in book
   const int currentPage = section->currentPage + 1;
@@ -935,33 +978,8 @@ void EpubReaderActivity::renderStatusBar() const {
 
   std::string title;
   TextRole titleRole = TextRole::System;
-
   int textYOffset = 0;
-
-  if (automaticPageTurnActive) {
-    title = tr(STR_AUTO_TURN_ENABLED) + std::to_string(60 * 1000 / pageTurnDuration);
-
-    // calculates textYOffset when rendering title in status bar
-    const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-
-    // offsets text if no status bar or progress bar only
-    if (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight()) {
-      textYOffset += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
-    }
-
-  } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
-    title = tr(STR_UNNAMED);
-    const int tocIndex = epub->getTocIndexForSpineIndex(currentSpineIndex);
-    if (tocIndex != -1) {
-      const auto tocItem = epub->getTocItem(tocIndex);
-      title = tocItem.title;
-      titleRole = tocItem.title.empty() ? TextRole::System : TextRole::UserContent;
-    }
-
-  } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
-    title = epub->getTitle();
-    titleRole = title.empty() ? TextRole::System : TextRole::UserContent;
-  }
+  buildStatusBarTitle(title, titleRole, textYOffset);
 
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, titleRole);
 }

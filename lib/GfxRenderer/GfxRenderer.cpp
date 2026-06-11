@@ -151,6 +151,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   const uint8_t height = glyph->height;
   const int left = glyph->left;
   const int top = glyph->top;
+  const int logicalWidth = renderer.getScreenWidth();
+  const int logicalHeight = renderer.getScreenHeight();
 
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
 
@@ -164,6 +166,24 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     } else {
       outerBase = cursorY - top;   // screenY = outerBase + glyphY
       innerBase = cursorX + left;  // screenX = innerBase + glyphX
+    }
+
+    if constexpr (rotation == TextRotation::Rotated90CW) {
+      const int minScreenX = outerBase;
+      const int maxScreenX = outerBase + height - 1;
+      const int minScreenY = innerBase - width + 1;
+      const int maxScreenY = innerBase;
+      if (maxScreenX < 0 || minScreenX >= logicalWidth || maxScreenY < 0 || minScreenY >= logicalHeight) {
+        return;
+      }
+    } else {
+      const int minScreenX = innerBase;
+      const int maxScreenX = innerBase + width - 1;
+      const int minScreenY = outerBase;
+      const int maxScreenY = outerBase + height - 1;
+      if (maxScreenX < 0 || minScreenX >= logicalWidth || maxScreenY < 0 || minScreenY >= logicalHeight) {
+        return;
+      }
     }
 
     if (is2Bit) {
@@ -189,15 +209,21 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 
           if (renderMode == GfxRenderer::BW && bmpVal < 3) {
             // Black (also paints over the grays in BW mode)
-            renderer.drawPixel(screenX, screenY, pixelState);
+            if (screenX >= 0 && screenX < logicalWidth && screenY >= 0 && screenY < logicalHeight) {
+              renderer.drawPixel(screenX, screenY, pixelState);
+            }
           } else if (renderMode == GfxRenderer::GRAYSCALE_MSB && (bmpVal == 1 || bmpVal == 2)) {
             // Light gray (also mark the MSB if it's going to be a dark gray too)
             // Dedicated X3 gray LUTs now provide proper 4-level gray on both devices
             // We have to flag pixels in reverse for the gray buffers, as 0 leave alone, 1 update
-            renderer.drawPixel(screenX, screenY, false);
+            if (screenX >= 0 && screenX < logicalWidth && screenY >= 0 && screenY < logicalHeight) {
+              renderer.drawPixel(screenX, screenY, false);
+            }
           } else if (renderMode == GfxRenderer::GRAYSCALE_LSB && bmpVal == 1) {
             // Dark gray
-            renderer.drawPixel(screenX, screenY, false);
+            if (screenX >= 0 && screenX < logicalWidth && screenY >= 0 && screenY < logicalHeight) {
+              renderer.drawPixel(screenX, screenY, false);
+            }
           }
         }
       }
@@ -218,7 +244,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           const uint8_t byte = bitmap[pixelPosition >> 3];
           const uint8_t bit_index = 7 - (pixelPosition & 7);
 
-          if ((byte >> bit_index) & 1) {
+          if (((byte >> bit_index) & 1) && screenX >= 0 && screenX < logicalWidth && screenY >= 0 &&
+              screenY < logicalHeight) {
             renderer.drawPixel(screenX, screenY, pixelState);
           }
         }
@@ -238,7 +265,8 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
 
   // Bounds checking against runtime panel dimensions
   if (phyX < 0 || phyX >= panelWidth || phyY < 0 || phyY >= panelHeight) {
-    LOG_ERR("GFX", "!! Outside range (%d, %d) -> (%d, %d)", x, y, phyX, phyY);
+    // Text and image code occasionally overdraw by a few pixels; dropping the
+    // write is enough here, while per-pixel logging makes page rendering unusably slow.
     return;
   }
 

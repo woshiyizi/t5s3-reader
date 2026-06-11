@@ -7,6 +7,8 @@
 #include "CrossPointSettings.h"
 #include "activities/Activity.h"
 
+enum class TextRole : int;
+
 class TxtReaderActivity final : public Activity {
   std::unique_ptr<Txt> txt;
   HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
@@ -32,6 +34,7 @@ class TxtReaderActivity final : public Activity {
   int cachedOrientedMarginLeft = 0;
 
   void renderPage();
+  void buildStatusBarTitle(std::string& title, TextRole& titleRole) const;
   void renderStatusBar() const;
 
   void initializeReader();

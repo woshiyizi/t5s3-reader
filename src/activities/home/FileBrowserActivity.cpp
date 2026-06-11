@@ -1,6 +1,7 @@
 #include "FileBrowserActivity.h"
 
 #include <Epub.h>
+#include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -16,6 +17,23 @@
 
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
+constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
+
+void appendTextKey(std::string& key, const std::string& text) {
+  if (text.empty()) {
+    return;
+  }
+  key.push_back('\n');
+  key += text;
+}
+
+void recordRoleText(FontCacheManager* fcm, const int systemFontId, const TextRole role, const char* text,
+                    const EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  if (fcm == nullptr || text == nullptr || text[0] == '\0') {
+    return;
+  }
+  fcm->recordText(text, BaseTheme::resolveTextFontId(systemFontId, role), style);
+}
 }  // namespace
 
 void FileBrowserActivity::loadFiles() {
@@ -59,6 +77,7 @@ void FileBrowserActivity::onEnter() {
   Activity::onEnter();
 
   selectorIndex = 0;
+  lastVisibleTextPrewarmKey.clear();
 
   // If Confirm was held while this activity opened (typical when launched from a menu), ignore
   // its release — otherwise we'd immediately auto-open whatever is at index 0.
@@ -88,6 +107,7 @@ void FileBrowserActivity::onEnter() {
 void FileBrowserActivity::onExit() {
   Activity::onExit();
   files.clear();
+  lastVisibleTextPrewarmKey.clear();
 }
 
 void FileBrowserActivity::clearFileMetadata(const std::string& fullPath) {
@@ -339,6 +359,45 @@ void FileBrowserActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =
       pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
+  const int pageItems = std::max(1, contentHeight / std::max(1, metrics.listRowHeight));
+
+  std::string visibleTextKey;
+  if (folderTitleRole == TextRole::UserContent) {
+    appendTextKey(visibleTextKey, folderName);
+  }
+  appendTextKey(visibleTextKey, basepath);
+  if (!files.empty()) {
+    const size_t pageStartIndex = (selectorIndex / static_cast<size_t>(pageItems)) * static_cast<size_t>(pageItems);
+    const size_t pageEndIndex = std::min(files.size(), pageStartIndex + static_cast<size_t>(pageItems));
+    for (size_t i = pageStartIndex; i < pageEndIndex; ++i) {
+      appendTextKey(visibleTextKey, getFileName(files[i]));
+      appendTextKey(visibleTextKey, getFileExtension(files[i]));
+    }
+  }
+
+  if (auto* fcm = renderer.getFontCacheManager();
+      fcm != nullptr && visibleTextKey != lastVisibleTextPrewarmKey) {
+    fcm->resetRecordedText();
+    if (folderTitleRole == TextRole::UserContent) {
+      recordRoleText(fcm, UI_12_FONT_ID, folderTitleRole, folderName.c_str(), EpdFontFamily::BOLD);
+      recordRoleText(fcm, UI_12_FONT_ID, folderTitleRole, UTF8_ELLIPSIS, EpdFontFamily::BOLD);
+    }
+    recordRoleText(fcm, SMALL_FONT_ID, TextRole::UserContent, basepath.c_str());
+    recordRoleText(fcm, SMALL_FONT_ID, TextRole::UserContent, UTF8_ELLIPSIS);
+    if (!files.empty()) {
+      const size_t pageStartIndex = (selectorIndex / static_cast<size_t>(pageItems)) * static_cast<size_t>(pageItems);
+      const size_t pageEndIndex = std::min(files.size(), pageStartIndex + static_cast<size_t>(pageItems));
+      for (size_t i = pageStartIndex; i < pageEndIndex; ++i) {
+        const std::string itemName = getFileName(files[i]);
+        const std::string itemExtension = getFileExtension(files[i]);
+        recordRoleText(fcm, UI_10_FONT_ID, TextRole::UserContent, itemName.c_str());
+        recordRoleText(fcm, UI_10_FONT_ID, TextRole::UserContent, itemExtension.c_str());
+      }
+    }
+    fcm->prewarmRecordedText();
+    lastVisibleTextPrewarmKey = visibleTextKey;
+  }
+
   if (files.empty()) {
     const char* emptyMsg = (mode == Mode::PickFirmware) ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND);
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, emptyMsg);

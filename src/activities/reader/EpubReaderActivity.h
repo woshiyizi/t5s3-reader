@@ -8,6 +8,8 @@
 #include "EpubReaderMenuActivity.h"
 #include "activities/Activity.h"
 
+enum class TextRole : int;
+
 class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
@@ -44,6 +46,7 @@ class EpubReaderActivity final : public Activity {
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
+  void buildStatusBarTitle(std::string& title, TextRole& titleRole, int& textYOffset) const;
   void renderStatusBar() const;
   void silentIndexNextChapterIfNeeded(uint16_t viewportWidth, uint16_t viewportHeight);
   void saveProgress(int spineIndex, int currentPage, int pageCount);

@@ -35,6 +35,7 @@ class FileBrowserActivity final : public Activity {
   // Files state
   std::string basepath = "/";
   std::vector<std::string> files;
+  std::string lastVisibleTextPrewarmKey;
 
   // Data loading
   void loadFiles();

@@ -25,6 +25,7 @@ constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
 constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format changes
+constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
 
 bool isUtf8ContinuationByte(char c) { return (static_cast<uint8_t>(c) & 0xC0) == 0x80; }
 
@@ -461,6 +462,14 @@ void TxtReaderActivity::renderPage() {
   auto* fcm = renderer.getFontCacheManager();
   auto scope = fcm->createPrewarmScope();
   renderLines();  // scan pass — text accumulated, no drawing
+  std::string statusTitle;
+  TextRole statusTitleRole = TextRole::System;
+  buildStatusBarTitle(statusTitle, statusTitleRole);
+  if (!statusTitle.empty()) {
+    const int statusFontId = BaseTheme::resolveTextFontId(SMALL_FONT_ID, statusTitleRole);
+    fcm->recordText(statusTitle.c_str(), statusFontId, EpdFontFamily::REGULAR);
+    fcm->recordText(UTF8_ELLIPSIS, statusFontId, EpdFontFamily::REGULAR);
+  }
   scope.endScanAndPrewarm();
 
   // BW rendering
@@ -475,14 +484,23 @@ void TxtReaderActivity::renderPage() {
   // scope destructor clears font cache via FontCacheManager
 }
 
+void TxtReaderActivity::buildStatusBarTitle(std::string& title, TextRole& titleRole) const {
+  title.clear();
+  titleRole = TextRole::System;
+
+  if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE) {
+    return;
+  }
+
+  title = txt->getTitle();
+  titleRole = title.empty() ? TextRole::System : TextRole::UserContent;
+}
+
 void TxtReaderActivity::renderStatusBar() const {
   const float progress = totalPages > 0 ? (currentPage + 1) * 100.0f / totalPages : 0;
   std::string title;
   TextRole titleRole = TextRole::System;
-  if (SETTINGS.statusBarTitle != CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE) {
-    title = txt->getTitle();
-    titleRole = title.empty() ? TextRole::System : TextRole::UserContent;
-  }
+  buildStatusBarTitle(title, titleRole);
   GUI.drawStatusBar(renderer, progress, currentPage + 1, totalPages, title, 0, 0, titleRole);
 }
 
