@@ -63,8 +63,8 @@ class SdCardFont {
   // preserves the persistent advance cache (reused across passes).
   void clearCache();
 
-  // Drop the persistent advance cache. Call when unloading the SD font or
-  // when font/size/family/glyph-table state changes.
+  // Drop the persistent advance and glyph-bitmap caches. Call when unloading
+  // the SD font or when font/size/family/glyph-table state changes.
   void clearPersistentCache();
 
   // Returns pointer to the managed EpdFont for a given style.
@@ -209,6 +209,21 @@ class SdCardFont {
   uint32_t overflowCount_ = 0;
   uint32_t overflowNext_ = 0;
 
+  // Persistent glyph bitmap cache shared across pages. This lets consecutive
+  // Chinese pages reuse repeated glyphs instead of reading every bitmap from SD
+  // again on each prewarm.
+  static constexpr uint32_t PERSISTENT_GLYPH_CACHE_CAPACITY = 128;
+  struct PersistentGlyphEntry {
+    EpdGlyph glyph{};
+    uint8_t* bitmap = nullptr;
+    uint32_t codepoint = 0;
+    uint8_t styleIdx = 0;
+    uint32_t lastUsed = 0;
+    bool valid = false;
+  };
+  PersistentGlyphEntry persistentGlyphCache_[PERSISTENT_GLYPH_CACHE_CAPACITY] = {};
+  uint32_t persistentGlyphUseCounter_ = 0;
+
   // Compact advance-only table for layout measurement (per-style).
   // Built by buildAdvanceTable(), queried by getAdvance().
   struct AdvanceEntry {
@@ -249,6 +264,9 @@ class SdCardFont {
   // Global helpers
   void freeAll();
   void clearOverflow();
+  void clearPersistentGlyphCache();
+  const PersistentGlyphEntry* findPersistentGlyph(uint8_t styleIdx, uint32_t codepoint);
+  void storePersistentGlyph(uint8_t styleIdx, uint32_t codepoint, const EpdGlyph& glyph, const uint8_t* bitmap);
   static void computeStyleFileOffsets(PerStyle& s, uint32_t baseOffset);
 
   // Static callback for EpdFontData::glyphMissHandler (per-style via OverflowContext)

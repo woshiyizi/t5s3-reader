@@ -142,6 +142,75 @@ void SdCardFont::clearOverflow() {
   overflowNext_ = 0;
 }
 
+void SdCardFont::clearPersistentGlyphCache() {
+  for (auto& entry : persistentGlyphCache_) {
+    delete[] entry.bitmap;
+    entry.bitmap = nullptr;
+    entry.codepoint = 0;
+    entry.styleIdx = 0;
+    entry.lastUsed = 0;
+    entry.valid = false;
+    memset(&entry.glyph, 0, sizeof(entry.glyph));
+  }
+  persistentGlyphUseCounter_ = 0;
+}
+
+const SdCardFont::PersistentGlyphEntry* SdCardFont::findPersistentGlyph(uint8_t styleIdx, uint32_t codepoint) {
+  for (auto& entry : persistentGlyphCache_) {
+    if (!entry.valid) {
+      continue;
+    }
+    if (entry.styleIdx == styleIdx && entry.codepoint == codepoint) {
+      entry.lastUsed = ++persistentGlyphUseCounter_;
+      return &entry;
+    }
+  }
+  return nullptr;
+}
+
+void SdCardFont::storePersistentGlyph(uint8_t styleIdx, uint32_t codepoint, const EpdGlyph& glyph, const uint8_t* bitmap) {
+  PersistentGlyphEntry* target = nullptr;
+  uint32_t oldestUse = UINT32_MAX;
+
+  for (auto& entry : persistentGlyphCache_) {
+    if (entry.valid && entry.styleIdx == styleIdx && entry.codepoint == codepoint) {
+      target = &entry;
+      break;
+    }
+    if (!entry.valid) {
+      target = &entry;
+      oldestUse = 0;
+      break;
+    }
+    if (entry.lastUsed < oldestUse) {
+      oldestUse = entry.lastUsed;
+      target = &entry;
+    }
+  }
+
+  if (!target) {
+    return;
+  }
+
+  uint8_t* bitmapCopy = nullptr;
+  if (glyph.dataLength > 0) {
+    bitmapCopy = new (std::nothrow) uint8_t[glyph.dataLength];
+    if (!bitmapCopy) {
+      return;
+    }
+    memcpy(bitmapCopy, bitmap, glyph.dataLength);
+  }
+
+  delete[] target->bitmap;
+  target->bitmap = bitmapCopy;
+  target->glyph = glyph;
+  target->glyph.dataOffset = 0;
+  target->codepoint = codepoint;
+  target->styleIdx = styleIdx;
+  target->lastUsed = ++persistentGlyphUseCounter_;
+  target->valid = true;
+}
+
 // --- Per-style kern/ligature ---
 
 void SdCardFont::applyKernLigaturePointers(PerStyle& s, EpdFontData& data) const {
@@ -786,6 +855,18 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
     return static_cast<int>(cpCount);
   }
 
+  std::unique_ptr<const PersistentGlyphEntry*[]> cachedGlyphs;
+  if (!metadataOnly) {
+    cachedGlyphs.reset(new (std::nothrow) const PersistentGlyphEntry*[validCount]);
+    if (!cachedGlyphs) {
+      LOG_ERR("SDCF", "Failed to allocate persistent glyph lookup table for style %u", styleIdx);
+      delete[] mappings;
+      freeStyleMiniData(s);
+      return static_cast<int>(cpCount);
+    }
+    memset(cachedGlyphs.get(), 0, sizeof(PersistentGlyphEntry*) * validCount);
+  }
+
   // Build sorted read order for sequential I/O
   uint32_t* readOrder = new (std::nothrow) uint32_t[validCount];
   if (!readOrder) {
@@ -835,6 +916,7 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
     }
     if (file.read(reinterpret_cast<uint8_t*>(&s.miniGlyphs[mapIdx]), sizeof(EpdGlyph)) != sizeof(EpdGlyph)) {
       LOG_ERR("SDCF", "Prewarm: short glyph read (style %u, glyph %d)", styleIdx, gIdx);
+      file.close();
       delete[] readOrder;
       delete[] mappings;
       freeStyleMiniData(s);
@@ -843,7 +925,12 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
     lastReadIndex = gIdx;
   }
 
+  for (uint32_t i = 0; i < validCount && !metadataOnly; i++) {
+    cachedGlyphs[i] = findPersistentGlyph(styleIdx, mappings[i].codepoint);
+  }
+
   uint32_t totalBitmapSize = 0;
+  uint32_t bitmapBytesRead = 0;
 
   if (!metadataOnly) {
     // Compute total bitmap size
@@ -854,6 +941,7 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
     s.miniBitmap = new (std::nothrow) uint8_t[totalBitmapSize > 0 ? totalBitmapSize : 1];
     if (!s.miniBitmap) {
       LOG_ERR("SDCF", "Failed to allocate mini bitmap (%u bytes) for style %u", totalBitmapSize, styleIdx);
+      file.close();
       delete[] readOrder;
       delete[] mappings;
       freeStyleMiniData(s);
@@ -875,6 +963,15 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
         continue;
       }
 
+      const auto* cachedGlyph = cachedGlyphs[mapIdx];
+      if (cachedGlyph && cachedGlyph->bitmap && cachedGlyph->glyph.dataLength == glyph.dataLength &&
+          cachedGlyph->glyph.width == glyph.width && cachedGlyph->glyph.height == glyph.height) {
+        memcpy(s.miniBitmap + miniBitmapOffset, cachedGlyph->bitmap, glyph.dataLength);
+        glyph.dataOffset = miniBitmapOffset;
+        miniBitmapOffset += glyph.dataLength;
+        continue;
+      }
+
       uint32_t fileOff = s.bitmapFileOffset + glyph.dataOffset;
       if (fileOff != lastBitmapEnd) {
         if (!file.seekSet(fileOff)) {
@@ -889,18 +986,23 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
       }
       if (file.read(s.miniBitmap + miniBitmapOffset, glyph.dataLength) != static_cast<int>(glyph.dataLength)) {
         LOG_ERR("SDCF", "Prewarm: short bitmap read (style %u)", styleIdx);
+        file.close();
         delete[] readOrder;
         delete[] mappings;
         freeStyleMiniData(s);
         return static_cast<int>(cpCount);
       }
       lastBitmapEnd = fileOff + glyph.dataLength;
+      bitmapBytesRead += glyph.dataLength;
+
+      storePersistentGlyph(styleIdx, mappings[mapIdx].codepoint, glyph, s.miniBitmap + miniBitmapOffset);
 
       glyph.dataOffset = miniBitmapOffset;
       miniBitmapOffset += glyph.dataLength;
     }
   }
 
+  file.close();
   uint32_t sdTime = millis() - sdStart;
   delete[] readOrder;
   delete[] mappings;
@@ -939,7 +1041,7 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
   stats_.sdReadTimeMs += sdTime;
   stats_.seekCount += seekCount;
   stats_.uniqueGlyphs += validCount;
-  stats_.bitmapBytes += totalBitmapSize;
+  stats_.bitmapBytes += bitmapBytesRead;
 
   return missed;
 }
@@ -961,6 +1063,7 @@ void SdCardFont::clearCache() {
 // --- Advance table ---
 
 void SdCardFont::clearPersistentCache() {
+  clearPersistentGlyphCache();
   for (uint8_t i = 0; i < MAX_STYLES; i++) {
     delete[] advanceTable_[i];
     advanceTable_[i] = nullptr;
@@ -1199,7 +1302,7 @@ int SdCardFont::buildAdvanceTable(const std::vector<std::string>& words, bool in
 // --- Stats ---
 
 void SdCardFont::logStats(const char* label) {
-  LOG_DBG("SDCF", "[%s] total=%ums sd_read=%ums seeks=%u glyphs=%u bitmap=%u bytes", label, stats_.prewarmTotalMs,
+  LOG_DBG("SDCF", "[%s] total=%ums sd_read=%ums seeks=%u glyphs=%u bitmap_sd=%u bytes", label, stats_.prewarmTotalMs,
           stats_.sdReadTimeMs, stats_.seekCount, stats_.uniqueGlyphs, stats_.bitmapBytes);
 }
 
@@ -1262,6 +1365,38 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     }
   }
 
+  if (const auto* cachedGlyph = self->findPersistentGlyph(styleIdx, codepoint)) {
+    uint32_t slot = self->overflowNext_;
+    bool wasAtCapacity = (self->overflowCount_ == OVERFLOW_CAPACITY);
+
+    uint8_t* tempBitmap = nullptr;
+    if (cachedGlyph->glyph.dataLength > 0) {
+      tempBitmap = new (std::nothrow) uint8_t[cachedGlyph->glyph.dataLength];
+      if (!tempBitmap) {
+        LOG_ERR("SDCF", "Overflow: failed to allocate %u bytes for cached U+%04X bitmap", cachedGlyph->glyph.dataLength,
+                codepoint);
+        return nullptr;
+      }
+      memcpy(tempBitmap, cachedGlyph->bitmap, cachedGlyph->glyph.dataLength);
+    }
+
+    if (wasAtCapacity) {
+      delete[] self->overflow_[slot].bitmap;
+    } else {
+      self->overflowCount_++;
+    }
+    self->overflowNext_ = (slot + 1) % OVERFLOW_CAPACITY;
+    self->overflow_[slot].glyph = cachedGlyph->glyph;
+    self->overflow_[slot].bitmap = tempBitmap;
+    self->overflow_[slot].codepoint = codepoint;
+    self->overflow_[slot].styleIdx = styleIdx;
+
+    LOG_DBG("SDCF", "Overflow: reused cached U+%04X style %u (slot %u/%u)", codepoint, styleIdx, slot,
+            OVERFLOW_CAPACITY);
+
+    return &self->overflow_[slot].glyph;
+  }
+
   // Look up global glyph index via full intervals
   int32_t globalIdx = self->findGlobalGlyphIndex(s, codepoint);
   if (globalIdx < 0) return nullptr;
@@ -1288,6 +1423,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   }
   if (file.read(reinterpret_cast<uint8_t*>(&tempGlyph), sizeof(EpdGlyph)) != sizeof(EpdGlyph)) {
     LOG_ERR("SDCF", "Overflow: failed to read glyph metadata for U+%04X style %u", codepoint, styleIdx);
+    file.close();
     return nullptr;
   }
 
@@ -1297,6 +1433,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     tempBitmap = new (std::nothrow) uint8_t[tempGlyph.dataLength];
     if (!tempBitmap) {
       LOG_ERR("SDCF", "Overflow: failed to allocate %u bytes for U+%04X bitmap", tempGlyph.dataLength, codepoint);
+      file.close();
       return nullptr;
     }
     if (!file.seekSet(s.bitmapFileOffset + tempGlyph.dataOffset)) {
@@ -1308,11 +1445,14 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
     if (file.read(tempBitmap, tempGlyph.dataLength) != static_cast<int>(tempGlyph.dataLength)) {
       LOG_ERR("SDCF", "Overflow: failed to read bitmap for U+%04X", codepoint);
       delete[] tempBitmap;
+      file.close();
       return nullptr;
     }
   }
 
   // All reads succeeded — commit to slot and advance ring buffer
+  self->storePersistentGlyph(styleIdx, codepoint, tempGlyph, tempBitmap);
+
   if (wasAtCapacity) {
     delete[] self->overflow_[slot].bitmap;
   } else {
@@ -1323,6 +1463,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   self->overflow_[slot].bitmap = tempBitmap;
   self->overflow_[slot].codepoint = codepoint;
   self->overflow_[slot].styleIdx = styleIdx;
+  file.close();
 
   LOG_DBG("SDCF", "Overflow: loaded U+%04X style %u on demand (slot %u/%u)", codepoint, styleIdx, slot,
           OVERFLOW_CAPACITY);
