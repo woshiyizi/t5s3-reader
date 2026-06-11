@@ -699,6 +699,15 @@ void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
 
   renderGrayToPanelCanvas();
 
+  if (forcedRefreshPending && (mode == FAST_REFRESH || mode == BALANCED_REFRESH)) {
+    LOG_DBG("DSP", "Forcing requested refresh mode for next grayscale update");
+    mode = forcedRefreshMode;
+  }
+  if (forceFullRefresh && mode != FULL_REFRESH) {
+    LOG_DBG("DSP", "Forcing full refresh for first grayscale update");
+    mode = FULL_REFRESH;
+  }
+
   pushPanelCanvas(mode, epdModeForRefreshMode(mode));
 
   refreshCycleCount = 0;

@@ -448,7 +448,7 @@ void FileBrowserActivity::render(RenderLock&&) {
                                             files.empty() ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  renderer.displayBuffer();
+  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
 }
 
 size_t FileBrowserActivity::findEntry(const std::string& name) const {

@@ -16,6 +16,10 @@
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
 
+namespace {
+constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HALF_REFRESH;
+}  // namespace
+
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
               12288,             // Stack size
@@ -209,17 +213,20 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,
 }
 
 void ActivityManager::goToFileTransfer() {
-  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+  replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
-void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
+void ActivityManager::goToSettings() {
+  replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+}
 
 void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)));
+  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)),
+                  kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToRecentBooks() {
-  replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput));
+  replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToBrowser() {
@@ -250,7 +257,9 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
 
 void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<CrashActivity>(renderer, mappedInput)); }
 
-void ActivityManager::goHome() { replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput)); }
+void ActivityManager::goHome() {
+  replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+}
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   if (pendingActivity) {

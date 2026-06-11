@@ -670,7 +670,7 @@ void WifiSelectionActivity::render(RenderLock&&) {
       break;
   }
 
-  renderer.displayBuffer();
+  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
 }
 
 void WifiSelectionActivity::renderNetworkList() const {

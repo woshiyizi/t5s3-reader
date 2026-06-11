@@ -86,7 +86,7 @@ class ActivityManager {
   void goToFileBrowser(std::string path = {});
   void goToRecentBooks();
   void goToBrowser();
-  void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::FULL_REFRESH);
+  void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::HALF_REFRESH);
   void goToSleep();
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
