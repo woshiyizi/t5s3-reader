@@ -17,6 +17,13 @@ struct ZipInflateCtx {
 namespace {
 constexpr uint16_t ZIP_METHOD_STORED = 0;
 constexpr uint16_t ZIP_METHOD_DEFLATED = 8;
+constexpr int ZIP_SCAN_YIELD_INTERVAL = 32;
+
+inline void maybeYieldDuringZipScan(const int iteration) {
+  if (iteration > 0 && (iteration % ZIP_SCAN_YIELD_INTERVAL) == 0) {
+    vTaskDelay(1);
+  }
+}
 
 // RAII zip: opens the zip if not already open, closes on destruction only if
 // it performed the open.  Removes the wasOpen/close boilerplate from every method.
@@ -68,6 +75,7 @@ bool ZipFile::loadAllFileStatSlims() {
   char itemName[256];
   fileStatSlimCache.clear();
   fileStatSlimCache.reserve(zipDetails.totalEntries);
+  int entriesScanned = 0;
 
   while (file.available()) {
     file.read(&sig, 4);
@@ -98,6 +106,7 @@ bool ZipFile::loadAllFileStatSlims() {
 
     // Skip the rest of this entry (extra field + comment)
     file.seekCur(m + k);
+    maybeYieldDuringZipScan(++entriesScanned);
   }
 
   // Set cursor to start of central directory for sequential access
@@ -131,6 +140,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
 
   uint32_t sig;
   char itemName[256];
+  int entriesScanned = 0;
 
   while (true) {
     uint32_t entryStart = file.position();
@@ -182,6 +192,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
 
     // Skip extra field + comment
     file.seekCur(m + k);
+    maybeYieldDuringZipScan(++entriesScanned);
   }
 
   return found;
@@ -312,6 +323,7 @@ int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<u
   const int targetCount = static_cast<int>(targets.size());
   uint32_t sig;
   char itemName[256];
+  int entriesScanned = 0;
 
   while (file.available()) {
     file.read(&sig, 4);
@@ -359,6 +371,7 @@ int ZipFile::fillUncompressedSizes(std::deque<SizeTarget>& targets, std::deque<u
     }
 
     file.seekCur(m + k);
+    maybeYieldDuringZipScan(++entriesScanned);
   }
 
   return matched;

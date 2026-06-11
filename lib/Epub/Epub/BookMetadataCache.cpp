@@ -13,6 +13,13 @@ constexpr uint8_t BOOK_CACHE_VERSION = 5;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
+constexpr int BUILD_YIELD_INTERVAL = 16;
+
+inline void maybeYieldDuringBuild(const int iteration) {
+  if (iteration > 0 && (iteration % BUILD_YIELD_INTERVAL) == 0) {
+    vTaskDelay(1);
+  }
+}
 }  // namespace
 
 /* ============= WRITING / BUILDING FUNCTIONS ================ */
@@ -61,6 +68,7 @@ bool BookMetadataCache::beginTocPass() {
       idx.hrefLen = static_cast<uint16_t>(entry.href.size());
       idx.spineIndex = static_cast<int16_t>(i);
       spineHrefIndex[i] = idx;
+      maybeYieldDuringBuild(i + 1);
     }
     std::sort(spineHrefIndex.begin(), spineHrefIndex.end(),
               [](const SpineHrefIndexEntry& a, const SpineHrefIndexEntry& b) {
@@ -144,6 +152,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     uint32_t pos = spineFile.position();
     auto spineEntry = readSpineEntry(spineFile);
     serialization::writePod(bookFile, pos + lutOffset + lutSize);
+    maybeYieldDuringBuild(i + 1);
   }
 
   // Loop through toc entries, writing LUT positions
@@ -152,6 +161,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     uint32_t pos = tocFile.position();
     auto tocEntry = readTocEntry(tocFile);
     serialization::writePod(bookFile, pos + lutOffset + lutSize + static_cast<uint32_t>(spineFile.position()));
+    maybeYieldDuringBuild(i + 1);
   }
 
   // LUTs complete
@@ -167,6 +177,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
         spineToTocIndex[tocEntry.spineIndex] = static_cast<int16_t>(j);
       }
     }
+    maybeYieldDuringBuild(j + 1);
   }
 
   ZipFile zip(epubPath);
@@ -206,6 +217,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
       t.len = static_cast<uint16_t>(path.size());
       t.index = static_cast<uint16_t>(i);
       targets[i] = t;
+      maybeYieldDuringBuild(i + 1);
     }
 
     std::sort(targets.begin(), targets.end(), [](const ZipFile::SizeTarget& a, const ZipFile::SizeTarget& b) {
@@ -260,6 +272,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
 
     // Write out spine data to book.bin
     writeSpineEntry(bookFile, spineEntry);
+    maybeYieldDuringBuild(i + 1);
   }
   // Close opened zip file
   zip.close();
@@ -269,6 +282,7 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
   for (int i = 0; i < tocCount; i++) {
     auto tocEntry = readTocEntry(tocFile);
     writeTocEntry(bookFile, tocEntry);
+    maybeYieldDuringBuild(i + 1);
   }
 
   // Explicit close() required: member variables persist beyond function scope

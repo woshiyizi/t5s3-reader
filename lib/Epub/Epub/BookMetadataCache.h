@@ -64,7 +64,9 @@ class BookMetadataCache {
   std::deque<SpineHrefIndexEntry> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
-  static constexpr uint16_t LARGE_SPINE_THRESHOLD = 400;
+  // Medium-to-large books benefit from the faster batch/indexed paths well
+  // before they hit the "huge EPUB" range.
+  static constexpr uint16_t LARGE_SPINE_THRESHOLD = 128;
 
   // FNV-1a 64-bit hash function
   static uint64_t fnvHash64(const std::string& s) {
