@@ -24,7 +24,8 @@
 - **存储**：microSD 卡，用于放置电子书、缓存、设置和截图
 - **输入**：前排按键、侧边按键、电源键、复位键、触摸屏
 
-![](./docs/README_img/t5s3.png)
+| ![](./docs/README_img/t5s3.png) | ![](./docs/README_img/t5s31.png) |
+| --- | --- |
 
 ## 功能
 

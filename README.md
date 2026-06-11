@@ -22,7 +22,9 @@ This repository is not the official CrossPoint project and is not affiliated wit
 - **Storage**: microSD card for books, cache, settings, and screenshots
 - **Input**: front buttons, side buttons, power button, reset button, and touch screen
 
-![](./docs/README_img/t5s3.png)
+| ![](./docs/README_img/t5s3.png) | ![](./docs/README_img/t5s31.png) |
+| --- | --- |
+
 ## Features
 
 - EPUB reading with chapter parsing, layout, saved progress, and image support.
