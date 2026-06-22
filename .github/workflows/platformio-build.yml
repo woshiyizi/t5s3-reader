@@ -59,3 +59,14 @@ jobs:
 
       - name: Build default firmware
         run: pio run -e default
+# ================= 新增部分 =================
+      - name: Upload Firmware Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: t5s3-firmware  # 你下载时看到的压缩包名称
+          path: |
+            .pio/build/default/firmware.bin
+            .pio/build/default/partitions.bin
+            .pio/build/default/bootloader.bin
+      # ============================================
+  
