@@ -139,6 +139,21 @@ add_ints = []
 if args.additional_intervals:
     add_ints = [tuple([int(n, base=0) for n in i.split(",")]) for i in args.additional_intervals]
 
+# === 新增：自动扫描翻译文件提取界面所需汉字 ===
+import glob
+import os
+translation_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../I18n/translations/')
+for yaml_file in glob.glob(os.path.join(translation_dir, '*.yaml')):
+    with open(yaml_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if ':' in line:
+                val = line.split(':', 1)[1].strip().strip('"').strip("'")
+                for char in val:
+                    cp = ord(char)
+                    # 只要是中文字符或全角标点，就加入提取列表
+                    if cp >= 0x2000:
+                        add_ints.append((cp, cp))
+
 def norm_floor(val):
     return int(math.floor(val / (1 << 6)))
 
