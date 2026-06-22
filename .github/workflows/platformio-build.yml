@@ -57,6 +57,14 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19
 
+      # ================= 新增步骤 1：安装字体转换工具的依赖 =================
+      - name: Install font dependencies
+        run: python -m pip install -r lib/EpdFont/scripts/requirements.txt
+
+      # ================= 新增步骤 2：运行内置字体转换脚本 =================
+      - name: Generate Built-in Fonts
+        run: bash lib/EpdFont/scripts/convert-builtin-fonts.sh
+
       - name: Build default firmware
         run: pio run -e default
 # ================= 新增部分 =================
