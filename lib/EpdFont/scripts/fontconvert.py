@@ -90,7 +90,7 @@ intervals = [
     (0x2190, 0x21FF),
     ### CJK ###
     # Core Unified Ideographs
-    (0x4E00, 0x9FFF),
+    #(0x4E00, 0x9FFF),
     # # Extension A
     # (0x3400, 0x4DBF),
     # # Extension B
@@ -122,7 +122,7 @@ intervals = [
     # # Kangxi Radicals
     # (0x2F00, 0x2FDF),
     # # CJK Symbols and Punctuation
-    (0x3000, 0x303F),
+    #(0x3000, 0x303F),
     # # CJK Compatibility Forms
     # (0xFE30, 0xFE4F),
     # # CJK Compatibility Ideographs
