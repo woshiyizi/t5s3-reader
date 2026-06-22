@@ -6,6 +6,8 @@ v1.0.1
 
 v1.0.2
 
-- Added support for Chinese books
+- Added support for Chinese books. #5
 - Optimize the screen refresh method to reduce screen flickering
 - Solve the problem of slow page loading when reading Chinese books
+- Correct selecting tabs on Settings. #7
+- Correct overriding already rendered images when Text Anti-Aliasing is enabled. #8
