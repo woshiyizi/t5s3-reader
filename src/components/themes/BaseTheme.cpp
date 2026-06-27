@@ -888,7 +888,7 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                               const int pageCount, std::string title, const int paddingBottom, const int textYOffset,
-                              const TextRole titleRole) const {
+                              const TextRole titleRole, const bool isBookmarked) const {
   auto metrics = UITheme::getInstance().getMetrics();
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
@@ -954,7 +954,10 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   }
 
   // Draw Title
-  if (!title.empty()) {
+  const bool hasStatusTextLine =
+      SETTINGS.statusBarBookProgressPercentage || SETTINGS.statusBarChapterPageCount || SETTINGS.statusBarBattery ||
+      !title.empty();
+  if (!title.empty() || (isBookmarked && hasStatusTextLine)) {
     textY -= textYOffset;
     // Centered chapter title text
     // Page width minus existing content with 30px padding on each side
@@ -964,6 +967,9 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     const int batterySize = SETTINGS.statusBarBattery ? (showBatteryPercentage ? 50 : 20) : 0;
     const int titleMarginLeft = batterySize + 30;
     const int titleMarginRight = progressTextWidth + 30;
+    const int bookmarkWidth = 10;
+    const int bookmarkHeight = 14;
+    const int bookmarkSpacing = (!title.empty() && isBookmarked) ? 6 : 0;
 
     // Attempt to center title on the screen, but if title is too wide then later we will center it within the
     // available space.
@@ -971,20 +977,40 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     int availableTitleSpace = rendererableScreenWidth - 2 * titleMarginLeftAdjusted;
 
     int titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
-    if (titleWidth > availableTitleSpace) {
+    int bookmarkReservedWidth = isBookmarked ? (bookmarkWidth + bookmarkSpacing) : 0;
+    if (bookmarkReservedWidth > availableTitleSpace) {
+      bookmarkReservedWidth = bookmarkWidth;
+    }
+
+    if (titleWidth + bookmarkReservedWidth > availableTitleSpace) {
       // Not enough space to center on the screen, center it within the remaining space instead
       availableTitleSpace = rendererableScreenWidth - titleMarginLeft - titleMarginRight;
       titleMarginLeftAdjusted = titleMarginLeft;
     }
-    if (titleWidth > availableTitleSpace) {
-      title = truncatedTextForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str(), availableTitleSpace);
+    if (titleWidth + bookmarkReservedWidth > availableTitleSpace) {
+      const int maxTitleWidth = std::max(0, availableTitleSpace - bookmarkReservedWidth);
+      title = truncatedTextForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str(), maxTitleWidth);
       titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
     }
 
-    drawTextForRole(renderer, SMALL_FONT_ID, titleRole,
-                    titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
-                        (availableTitleSpace - titleWidth) / 2,
-                    textY, title.c_str());
+    const int contentWidth = titleWidth + (isBookmarked ? bookmarkWidth + ((!title.empty()) ? bookmarkSpacing : 0) : 0);
+    const int contentX = titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
+                         (availableTitleSpace - contentWidth) / 2;
+
+    if (isBookmarked) {
+      const int iconX = contentX;
+      const int iconY = textY + 2;
+      const int notchDepth = bookmarkHeight / 3;
+      const int centerX = iconX + bookmarkWidth / 2;
+      const int xPoints[5] = {iconX, iconX + bookmarkWidth, iconX + bookmarkWidth, centerX, iconX};
+      const int yPoints[5] = {iconY, iconY, iconY + bookmarkHeight, iconY + bookmarkHeight - notchDepth,
+                              iconY + bookmarkHeight};
+      renderer.fillPolygon(xPoints, yPoints, 5, true);
+    }
+
+    if (!title.empty()) {
+      drawTextForRole(renderer, SMALL_FONT_ID, titleRole, contentX + bookmarkReservedWidth, textY, title.c_str());
+    }
   }
 }
 

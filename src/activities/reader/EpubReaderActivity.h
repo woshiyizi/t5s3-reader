@@ -65,6 +65,7 @@ class EpubReaderActivity final : public Activity {
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void pageTurn(bool isForwardTurn);
   void loadCachedBookmarks();
+  bool isCurrentPageBookmarked() const;
   void addBookmark();
 
   // Footnote navigation

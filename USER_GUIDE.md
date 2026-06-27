@@ -406,6 +406,7 @@ This feature can be disabled in the **[Controls Settings](#363-controls)** to he
 * **Toggle Bookmark:** Open the reader menu with **Confirm** and select **Toggle Bookmark** to add or remove a bookmark for the current page.
 * **Open Bookmarks:** If the current book has bookmarks, the reader menu also shows a **Bookmarks** entry. Open it to jump to a saved location.
 * **Long-press Shortcut:** You can bind **Bookmark** to **Settings -> Controls -> Long-press Menu** and then hold **Confirm** to toggle the current-page bookmark.
+* **Status Bar Indicator:** When the current EPUB page is bookmarked and the status bar has a text row visible, a small bookmark marker appears in the reader status bar.
 
 ### Supported Languages
 

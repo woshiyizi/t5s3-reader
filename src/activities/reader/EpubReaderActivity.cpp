@@ -1105,7 +1105,8 @@ void EpubReaderActivity::renderStatusBar() const {
   int textYOffset = 0;
   buildStatusBarTitle(title, titleRole, textYOffset);
 
-  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, titleRole);
+  GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, titleRole,
+                    isCurrentPageBookmarked());
 }
 
 void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool savePosition) {
@@ -1184,6 +1185,20 @@ void EpubReaderActivity::loadCachedBookmarks() {
       JsonSettingsIO::loadBookmarks(cachedBookmarks, json.c_str());
     }
   }
+}
+
+bool EpubReaderActivity::isCurrentPageBookmarked() const {
+  if (!epub || !section) {
+    return false;
+  }
+
+  const int currentPage = section->currentPage;
+  const int pageCount = section->pageCount;
+  const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
+
+  return std::any_of(cachedBookmarks.begin(), cachedBookmarks.end(), [&](const BookmarkEntry& bookmark) {
+    return bookmarkMatchesProgress(bookmark, currentSpineIndex, currentPage, pageCount, pageRange);
+  });
 }
 
 void EpubReaderActivity::addBookmark() {
