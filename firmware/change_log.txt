@@ -11,3 +11,6 @@ v1.0.2
 - Solve the problem of slow page loading when reading Chinese books
 - Correct selecting tabs on Settings. #7
 - Correct overriding already rendered images when Text Anti-Aliasing is enabled. #8
+
+v1.0.3
+- 现在 EPUB 文件中可以使用书签功能了。您可以从阅读器菜单中使用 Toggle Bookmark 来访问书签。您也可以在 Settings > Controls > Long-press Menu 中将其设置为长按操作
