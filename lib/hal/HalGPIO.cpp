@@ -68,9 +68,12 @@ void HalGPIO::readTouchState() {
     touchActive = true;
     touchStartX = x;
     touchStartY = y;
+    currentTouchPoint = {x, y};
+    touchStartTime = millis();
     touchMoved = false;
     LOG_DBG("HW", "Touch raw=(%u,%u) logical=(%u,%u)", point.x, point.y, x, y);
   } else {
+    currentTouchPoint = {x, y};
     const int dx = static_cast<int>(x) - static_cast<int>(touchStartX);
     const int dy = static_cast<int>(y) - static_cast<int>(touchStartY);
     if (abs(dx) >= TOUCH_SWIPE_THRESHOLD || abs(dy) >= TOUCH_SWIPE_THRESHOLD) {
@@ -147,6 +150,16 @@ bool HalGPIO::getTouchTap(TouchPoint& point) const {
     return false;
   }
   point = touchTapPoint;
+  return true;
+}
+
+bool HalGPIO::getTouchHold(TouchPoint& point, unsigned long& heldMs) const {
+  if (!touchActive || touchMoved) {
+    return false;
+  }
+
+  point = currentTouchPoint;
+  heldMs = millis() - touchStartTime;
   return true;
 }
 

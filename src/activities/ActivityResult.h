@@ -38,6 +38,7 @@ struct PageResult {
 struct ProgressChangeResult {
   int spineIndex = 0;
   int page = 0;
+  int pageCount = 0;
 };
 
 struct SyncResult {

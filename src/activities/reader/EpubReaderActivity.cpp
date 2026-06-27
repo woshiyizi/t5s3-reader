@@ -521,11 +521,12 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
               const auto& progress = std::get<ProgressChangeResult>(result.data);
               if (currentSpineIndex != progress.spineIndex || !section || section->currentPage != progress.page) {
                 RenderLock lock(*this);
+                cachedSpineIndex = progress.spineIndex;
                 currentSpineIndex = progress.spineIndex;
                 nextPageNumber = progress.page;
-                cachedChapterTotalPageCount = 0;
+                cachedChapterTotalPageCount = progress.pageCount;
                 pendingPageJump.reset();
-                saveProgress(currentSpineIndex, nextPageNumber, 0);
+                saveProgress(currentSpineIndex, nextPageNumber, progress.pageCount);
                 section.reset();
               }
             }

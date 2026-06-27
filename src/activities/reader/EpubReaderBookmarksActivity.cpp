@@ -18,7 +18,7 @@ constexpr int ENTER_DELETE_MODE_MS = 700;
 constexpr int DELETE_MODE_OFF = 0;
 constexpr int DELETE_MODE_DISPLAY = 1;
 constexpr int DELETE_MODE_CONFIRM = 2;
-constexpr int LINE_HEIGHT = 60;
+constexpr int TITLE_HEIGHT = 60;
 }  // namespace
 
 void EpubReaderBookmarksActivity::onEnter() {
@@ -48,18 +48,128 @@ void EpubReaderBookmarksActivity::onEnter() {
 
 void EpubReaderBookmarksActivity::onExit() { Activity::onExit(); }
 
-int EpubReaderBookmarksActivity::getGutterBottom(const GfxRenderer& renderer) {
+int EpubReaderBookmarksActivity::getGutterBottom(const GfxRenderer& renderer) const {
   const auto orientation = renderer.getOrientation();
   const bool isPortrait = orientation == GfxRenderer::Orientation::Portrait;
   return isPortrait ? 75 : 40;
 }
 
-int EpubReaderBookmarksActivity::getListHeight(const GfxRenderer& renderer) {
+int EpubReaderBookmarksActivity::getListHeight(const GfxRenderer& renderer) const {
   const auto pageHeight = renderer.getScreenHeight();
-  return pageHeight - getGutterBottom(renderer) - LINE_HEIGHT;
+  return pageHeight - getGutterBottom(renderer) - TITLE_HEIGHT;
+}
+
+int EpubReaderBookmarksActivity::getRowHeight() const {
+  return std::max(1, UITheme::getInstance().getMetrics().listWithSubtitleRowHeight);
+}
+
+int EpubReaderBookmarksActivity::getPageItems() const {
+  return std::max(1, getListHeight(renderer) / getRowHeight());
+}
+
+int EpubReaderBookmarksActivity::getTouchedBookmarkIndex(const int16_t y) const {
+  if (bookmarks.empty()) {
+    return -1;
+  }
+
+  const auto orientation = renderer.getOrientation();
+  const bool isPortraitInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
+  const int contentY = isPortraitInverted ? 50 : 0;
+  const int listY = contentY + TITLE_HEIGHT;
+  const int rowHeight = getRowHeight();
+  const int pageItems = getPageItems();
+
+  if (y < listY) {
+    return -1;
+  }
+
+  const int row = (y - listY) / rowHeight;
+  if (row < 0 || row >= pageItems) {
+    return -1;
+  }
+
+  const int pageStartIndex = (selectorIndex / pageItems) * pageItems;
+  const int touchedIndex = pageStartIndex + row;
+  if (touchedIndex < 0 || touchedIndex >= static_cast<int>(bookmarks.size())) {
+    return -1;
+  }
+
+  return touchedIndex;
+}
+
+void EpubReaderBookmarksActivity::openSelectedBookmark() {
+  if (bookmarks.empty()) {
+    return;
+  }
+
+  const auto& bookmark = bookmarks.at(selectorIndex);
+  if (bookmark.computedChapterPageCount > 0) {
+    LOG_DBG("EPB", "Opening bookmark using stored page %u/%u in spine %u", bookmark.computedChapterProgress,
+            bookmark.computedChapterPageCount, bookmark.computedSpineIndex);
+    setResult(ProgressChangeResult{bookmark.computedSpineIndex, bookmark.computedChapterProgress,
+                                   bookmark.computedChapterPageCount});
+    finish();
+    return;
+  }
+
+  const auto pos = ProgressMapper::toCrossPoint(epub, {bookmark.xpath, bookmark.percentage},
+                                                bookmark.computedSpineIndex, bookmark.computedChapterPageCount);
+  setResult(ProgressChangeResult{pos.spineIndex, pos.pageNumber, pos.totalPages});
+  finish();
+}
+
+void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
+  if (bookmarks.empty() || selectorIndex < 0 || selectorIndex >= static_cast<int>(bookmarks.size())) {
+    return;
+  }
+
+  bookmarks.erase(bookmarks.begin() + selectorIndex);
+  const std::string path = BookmarkUtil::getBookmarkPath(epubPath);
+  Storage.mkdir("/.crosspoint");
+  Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str());
+  if (!JsonSettingsIO::saveBookmarks(bookmarks, path.c_str())) {
+    LOG_ERR("EPB", "Failed to save bookmarks after delete");
+  }
+
+  if (selectorIndex >= static_cast<int>(bookmarks.size()) && selectorIndex > 0) {
+    selectorIndex--;
+  }
+
+  if (bookmarks.empty()) {
+    ActivityResult result;
+    result.isCancelled = true;
+    setResult(std::move(result));
+    finish();
+    return;
+  }
+
+  confirmingDelete = DELETE_MODE_OFF;
+  requestUpdate();
 }
 
 void EpubReaderBookmarksActivity::loop() {
+  MappedInputManager::TouchPoint touchPoint{};
+  unsigned long touchHeldMs = 0;
+  if (confirmingDelete == DELETE_MODE_OFF && mappedInput.getTouchHold(touchPoint, touchHeldMs, renderer)) {
+    const int touchedIndex = getTouchedBookmarkIndex(touchPoint.y);
+    if (touchedIndex >= 0) {
+      if (selectorIndex != touchedIndex) {
+        selectorIndex = touchedIndex;
+        requestUpdate();
+      }
+
+      if (touchHeldMs >= ENTER_DELETE_MODE_MS && !touchDeleteTriggered) {
+        confirmingDelete = DELETE_MODE_DISPLAY;
+        touchDeleteTriggered = true;
+        ignoreNextTouchTap = true;
+        requestUpdate();
+        return;
+      }
+    }
+  } else {
+    touchDeleteTriggered = false;
+  }
+
   if (confirmingDelete >= DELETE_MODE_DISPLAY) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
       if (confirmingDelete == DELETE_MODE_DISPLAY) {
@@ -68,28 +178,7 @@ void EpubReaderBookmarksActivity::loop() {
         return;
       }
 
-      bookmarks.erase(bookmarks.begin() + selectorIndex);
-      const std::string path = BookmarkUtil::getBookmarkPath(epubPath);
-      Storage.mkdir("/.crosspoint");
-      Storage.mkdir(BookmarkUtil::getBookmarksDir().c_str());
-      if (!JsonSettingsIO::saveBookmarks(bookmarks, path.c_str())) {
-        LOG_ERR("EPB", "Failed to save bookmarks after delete");
-      }
-
-      if (selectorIndex >= static_cast<int>(bookmarks.size()) && selectorIndex > 0) {
-        selectorIndex--;
-      }
-
-      if (bookmarks.empty()) {
-        ActivityResult result;
-        result.isCancelled = true;
-        setResult(std::move(result));
-        finish();
-        return;
-      }
-
-      confirmingDelete = DELETE_MODE_OFF;
-      requestUpdate();
+      deleteSelectedBookmark();
       return;
     }
 
@@ -105,12 +194,7 @@ void EpubReaderBookmarksActivity::loop() {
       return;
     }
 
-    const auto& bookmark = bookmarks.at(selectorIndex);
-    CrossPointPosition pos =
-        ProgressMapper::toCrossPoint(epub, {bookmark.xpath, bookmark.percentage}, bookmark.computedSpineIndex,
-                                     bookmark.computedChapterPageCount);
-    setResult(ProgressChangeResult{pos.spineIndex, pos.pageNumber});
-    finish();
+    openSelectedBookmark();
     return;
   }
 
@@ -142,20 +226,50 @@ void EpubReaderBookmarksActivity::loop() {
   });
 
   buttonNavigator.onNextContinuous([this] {
-    const int rowHeight = std::max(1, UITheme::getInstance().getMetrics().listWithSubtitleRowHeight);
-    const int pageItems = std::max(1, getListHeight(renderer) / rowHeight);
-    selectorIndex = ButtonNavigator::nextPageIndex(selectorIndex, static_cast<int>(bookmarks.size()),
-                                                   pageItems);
+    selectorIndex = ButtonNavigator::nextPageIndex(selectorIndex, static_cast<int>(bookmarks.size()), getPageItems());
     requestUpdate();
   });
 
   buttonNavigator.onPreviousContinuous([this] {
-    const int rowHeight = std::max(1, UITheme::getInstance().getMetrics().listWithSubtitleRowHeight);
-    const int pageItems = std::max(1, getListHeight(renderer) / rowHeight);
-    selectorIndex = ButtonNavigator::previousPageIndex(selectorIndex, static_cast<int>(bookmarks.size()),
-                                                       pageItems);
+    selectorIndex =
+        ButtonNavigator::previousPageIndex(selectorIndex, static_cast<int>(bookmarks.size()), getPageItems());
     requestUpdate();
   });
+}
+
+bool EpubReaderBookmarksActivity::onTouchTap(int16_t, int16_t y) {
+  if (ignoreNextTouchTap) {
+    ignoreNextTouchTap = false;
+    return true;
+  }
+
+  if (bookmarks.empty()) {
+    return false;
+  }
+
+  if (confirmingDelete >= DELETE_MODE_DISPLAY) {
+    const int rowHeight = getRowHeight();
+    const int confirmRowY = renderer.getScreenHeight() / 2;
+    if (y >= confirmRowY && y < confirmRowY + rowHeight) {
+      if (confirmingDelete == DELETE_MODE_DISPLAY) {
+        confirmingDelete = DELETE_MODE_CONFIRM;
+        requestUpdate();
+      } else {
+        deleteSelectedBookmark();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  const int touchedIndex = getTouchedBookmarkIndex(y);
+  if (touchedIndex < 0) {
+    return false;
+  }
+
+  selectorIndex = touchedIndex;
+  openSelectedBookmark();
+  return true;
 }
 
 void EpubReaderBookmarksActivity::render(RenderLock&&) {
@@ -172,8 +286,9 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
   const int contentWidth = pageWidth - hintGutterWidth;
   const int contentY = isPortraitInverted ? 50 : 0;
   const int hintGutterBottom = getGutterBottom(renderer);
-  const int listY = contentY + LINE_HEIGHT;
+  const int listY = contentY + TITLE_HEIGHT;
   const int listHeight = getListHeight(renderer);
+  const int rowHeight = getRowHeight();
   const int numBookmarks = static_cast<int>(bookmarks.size());
 
   const int titleX =
@@ -198,14 +313,14 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
 
   if (numBookmarks > 0) {
     if (confirmingDelete >= DELETE_MODE_DISPLAY) {
-      GUI.drawHelpText(renderer, Rect{0, pageHeight / 2 - LINE_HEIGHT * 2, contentWidth, LINE_HEIGHT},
+      GUI.drawHelpText(renderer, Rect{contentX, pageHeight / 2 - TITLE_HEIGHT, contentWidth, TITLE_HEIGHT},
                        tr(STR_CONFIRM_DELETE_BOOKMARK));
-      GUI.drawList(renderer, Rect{contentX, pageHeight / 2, contentWidth, LINE_HEIGHT}, 1, 0, getBookmarkTitle,
+      GUI.drawList(renderer, Rect{contentX, pageHeight / 2, contentWidth, rowHeight}, 1, 0, getBookmarkTitle,
                    getBookmarkSubtitle);
     } else {
       GUI.drawList(renderer, Rect{contentX, listY, contentWidth, listHeight}, numBookmarks, selectorIndex,
                    getBookmarkTitle, getBookmarkSubtitle);
-      GUI.drawHelpText(renderer, Rect{contentX, pageHeight - hintGutterBottom, contentWidth, LINE_HEIGHT},
+      GUI.drawHelpText(renderer, Rect{contentX, pageHeight - hintGutterBottom, contentWidth, TITLE_HEIGHT},
                        tr(STR_HOLD_OPEN_TO_DELETE));
     }
   }
