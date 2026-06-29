@@ -159,7 +159,6 @@ void HomeActivity::onEnter() {
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
-  lastClockMinute = -1;
   lastVisibleTextPrewarmKey.clear();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -221,13 +220,8 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
-  uint8_t hour = 0;
-  uint8_t minute = 0;
-  if (halClock.isAvailable() && halClock.getTime(hour, minute) && static_cast<int>(minute) != lastClockMinute) {
-    lastClockMinute = minute;
-    requestUpdate();
-  }
-
+  // Keep the home clock event-driven. Idle RTC polling here caused periodic
+  // redraws and repeated I2C traffic while the device sat on the home screen.
   // Keep SD/EPUB thumbnail work out of the render task; it can be slow enough to stress the render mutex/stack.
   if (firstRenderDone && !recentsLoaded && !recentsLoading) {
     loadRecentCovers(UITheme::getInstance().getMetrics().homeCoverHeight);

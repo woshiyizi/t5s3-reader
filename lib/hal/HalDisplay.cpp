@@ -121,6 +121,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
 
  private:
   bool preparePowerPins() {
+    // Keep the full expander setup sequence on the bus atomically. The render
+    // task can power-cycle EPD rails while the main loop is polling RTC/touch.
+    BoardT5S3::ScopedI2CLock busLock;
     bool ok = true;
     ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
     ok &= BoardT5S3::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
@@ -139,6 +142,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   bool powerOnSequence() {
+    // Hold the I2C bus for the whole EPD power-on sequence so RTC/touch reads
+    // cannot interleave with the PCA9535/TPS65185 transactions.
+    BoardT5S3::ScopedI2CLock busLock;
     const auto& cfg = config();
 
     lgfx::gpio_hi(cfg.pin_spv);
@@ -190,6 +196,7 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   void powerOffSequence() {
+    BoardT5S3::ScopedI2CLock busLock;
     const auto& cfg = config();
 
     BoardT5S3::writePca9535Pin(PCA9535_IO10_EP_OE, false);
