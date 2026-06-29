@@ -132,6 +132,28 @@
       </p>
     </div>
   <script>
+    async function syncDeviceClockIfNeeded() {
+      try {
+        const now = Date.now();
+        const key = 'crosspointClockSyncAt';
+        const lastSync = parseInt(localStorage.getItem(key) || '0', 10);
+        if (Number.isFinite(lastSync) && (now - lastSync) < 5 * 60 * 1000) {
+          return;
+        }
+
+        const response = await fetch('/api/clock/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ epochMs: now })
+        });
+        if (response.ok) {
+          localStorage.setItem(key, String(now));
+        }
+      } catch (error) {
+        console.debug('Clock sync skipped:', error);
+      }
+    }
+
     async function fetchStatus() {
       try {
         const response = await fetch('/api/status');
@@ -150,7 +172,10 @@
     }
 
     // Fetch status on page load
-    window.onload = fetchStatus;
+    window.onload = function() {
+      syncDeviceClockIfNeeded();
+      fetchStatus();
+    };
   </script>
   </body>
 </html>

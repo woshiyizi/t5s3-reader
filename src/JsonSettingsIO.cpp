@@ -146,6 +146,9 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   // Stored as ISO code string ("EN", "DE", ...) for stability across enum reorders.
   doc["language"] = (s.language < getLanguageCount()) ? LANGUAGE_CODES[s.language] : "EN";
   doc["sdFontFamilyName"] = s.sdFontFamilyName;
+  doc["rtcStoresUtc"] = s.rtcStoresUtc != 0;
+  doc["rtcVariantHint"] = s.rtcVariantHint;
+  doc["rtcReferenceEpoch"] = s.rtcReferenceEpoch;
 
   String json;
   serializeJson(doc, json);
@@ -244,6 +247,11 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   if (doc["language"].is<const char*>()) {
     s.language = static_cast<uint8_t>(I18n::languageFromCode(doc["language"].as<const char*>()));
   }
+
+  s.rtcStoresUtc = clamp(doc["rtcStoresUtc"] | static_cast<uint8_t>(0), static_cast<uint8_t>(2), static_cast<uint8_t>(0));
+  s.rtcVariantHint = clamp(doc["rtcVariantHint"] | static_cast<uint8_t>(0), static_cast<uint8_t>(3),
+                           static_cast<uint8_t>(0));
+  s.rtcReferenceEpoch = doc["rtcReferenceEpoch"] | static_cast<uint32_t>(0);
 
   LOG_DBG("CPS", "Settings loaded from file");
 

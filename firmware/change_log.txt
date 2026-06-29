@@ -19,7 +19,13 @@ v1.0.3
 
 添加主页面时钟，阅读页面状态栏时钟，通过 Settings -> Reader -> Customise Status Bar 中将其设置
 
+进 Settings > System > Time Zone 选当前地区。
+进 WiFi Networks 连一次网，让它自动做 NTP 校时并回写 RTC。
 
+如果时间在复位后重置了，可以做一个不依赖公网 NTP的操作：
+设备连上 WiFi，用手机或电脑打开设备网页一次，http://设备IP/、/files、/settings、/fonts 都可以。
+
+回主页和阅读页看时钟是否正确，再断电重启确认还能保持。
 
 
 

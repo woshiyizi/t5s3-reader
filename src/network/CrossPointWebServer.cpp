@@ -4,13 +4,16 @@
 #include <BoardT5S3.h>
 #include <Epub.h>
 #include <FsHelpers.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
+#include <sys/time.h>
 
 #include <algorithm>
 
+#include "ClockSync.h"
 #include "CrossPointSettings.h"
 #include "FontInstaller.h"
 #include "OpdsServerStore.h"
@@ -241,6 +244,7 @@ void CrossPointWebServer::begin() {
   server->on("/settings", HTTP_GET, [this] { handleSettingsPage(); });
   server->on("/api/settings", HTTP_GET, [this] { handleGetSettings(); });
   server->on("/api/settings", HTTP_POST, [this] { handlePostSettings(); });
+  server->on("/api/clock/sync", HTTP_POST, [this] { handleClockSync(); });
   server->on("/fonts", HTTP_GET, [this] { handleFontsPage(); });
   server->on("/api/fonts", HTTP_GET, [this] { handleFontList(); });
   server->on("/api/fonts/upload", HTTP_POST, [this] { handleFontUpload(); }, [this] { handleFontUploadData(); });
@@ -1362,6 +1366,58 @@ void CrossPointWebServer::handlePostSettings() {
 
   LOG_DBG("WEB", "Applied %d setting(s)", applied);
   server->send(200, "text/plain", String("Applied ") + String(applied) + " setting(s)");
+}
+
+void CrossPointWebServer::handleClockSync() {
+  if (!server->hasArg("plain")) {
+    server->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing JSON body\"}");
+    return;
+  }
+
+  JsonDocument doc;
+  const DeserializationError err = deserializeJson(doc, server->arg("plain"));
+  if (err) {
+    server->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  const int64_t epochMs = doc["epochMs"] | static_cast<int64_t>(0);
+  if (epochMs < 1704067200000LL) {
+    server->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid epoch\"}");
+    return;
+  }
+
+  const timeval tv = {
+      .tv_sec = static_cast<time_t>(epochMs / 1000LL),
+      .tv_usec = static_cast<suseconds_t>((epochMs % 1000LL) * 1000LL),
+  };
+  if (settimeofday(&tv, nullptr) != 0) {
+    LOG_ERR("WEB", "Browser clock sync failed: settimeofday() rejected epoch=%lld", static_cast<long long>(epochMs));
+    server->send(500, "application/json", "{\"ok\":false,\"error\":\"settimeofday failed\"}");
+    return;
+  }
+
+  if (!ClockSync::commitCurrentSystemTime("Browser")) {
+    server->send(500, "application/json", "{\"ok\":false,\"error\":\"RTC commit failed\"}");
+    return;
+  }
+
+  time_t now = 0;
+  time(&now);
+  tm localTime = {};
+  localtime_r(&now, &localTime);
+  char localBuf[32];
+  strftime(localBuf, sizeof(localBuf), "%Y-%m-%d %H:%M:%S", &localTime);
+  LOG_DBG("WEB", "Browser clock sync committed: %s", localBuf);
+
+  JsonDocument response;
+  response["ok"] = true;
+  response["epoch"] = static_cast<uint32_t>(now);
+  response["localTime"] = localBuf;
+
+  String json;
+  serializeJson(response, json);
+  server->send(200, "application/json", json);
 }
 
 // ---- OPDS Server API ----
