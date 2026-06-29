@@ -146,7 +146,7 @@ class BaseTheme {
                         bool highlightValue = false, TextRole textRole = TextRole::System) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr, TextRole titleRole = TextRole::System,
-                          TextRole subtitleRole = TextRole::System) const;
+                          TextRole subtitleRole = TextRole::System, const char* leadingLabel = nullptr) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
   virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,

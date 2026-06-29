@@ -14,3 +14,16 @@ v1.0.2
 
 v1.0.3
 - 现在 EPUB 文件中可以使用书签功能了。您可以从阅读器菜单中使用 Toggle Bookmark 来访问书签。您也可以在 Settings > Controls > Long-press Menu 中将其设置为长按操作
+添加“当前页是否已加书签”的状态做进阅读界面状态栏
+
+
+添加主页面时钟，阅读页面状态栏时钟，通过 Settings -> Reader -> Customise Status Bar 中将其设置
+
+
+
+
+
+
+
+
+

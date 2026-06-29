@@ -53,7 +53,7 @@ class LyraTheme : public BaseTheme {
   void drawBatteryLeft(const GfxRenderer& renderer, Rect rect, bool showPercentage = true) const override;
   void drawBatteryRight(const GfxRenderer& renderer, Rect rect, bool showPercentage = true) const override;
   void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                  TextRole titleRole, TextRole subtitleRole) const override;
+                  TextRole titleRole, TextRole subtitleRole, const char* leadingLabel) const override;
   void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                      const char* rightLabel = nullptr) const override;
   void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,

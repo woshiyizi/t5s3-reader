@@ -5,6 +5,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
@@ -158,6 +159,7 @@ void HomeActivity::onEnter() {
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
+  lastClockMinute = -1;
   lastVisibleTextPrewarmKey.clear();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
@@ -219,6 +221,13 @@ void HomeActivity::freeCoverBuffer() {
 }
 
 void HomeActivity::loop() {
+  uint8_t hour = 0;
+  uint8_t minute = 0;
+  if (halClock.isAvailable() && halClock.getTime(hour, minute) && static_cast<int>(minute) != lastClockMinute) {
+    lastClockMinute = minute;
+    requestUpdate();
+  }
+
   // Keep SD/EPUB thumbnail work out of the render task; it can be slow enough to stress the render mutex/stack.
   if (firstRenderDone && !recentsLoaded && !recentsLoading) {
     loadRecentCovers(UITheme::getInstance().getMetrics().homeCoverHeight);
@@ -305,9 +314,15 @@ void HomeActivity::render(RenderLock&&) {
     lastVisibleTextPrewarmKey = visibleTextKey;
   }
 
+  char homeClockLabel[6] = {};
+  const char* headerClockLabel = nullptr;
+  if (halClock.isAvailable() && halClock.formatTime(homeClockLabel, sizeof(homeClockLabel))) {
+    headerClockLabel = homeClockLabel;
+  }
+
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
-                 nullptr, TextRole::UserContent);
+                 nullptr, TextRole::UserContent, TextRole::System, headerClockLabel);
 
   GUI.drawRecentBookCover(renderer, Rect{0, metrics.homeTopPadding, pageWidth, metrics.homeCoverTileHeight},
                           recentBooks, selectorIndex, coverRendered, coverBufferStored, bufferRestored,

@@ -1,6 +1,7 @@
 #include "BaseTheme.h"
 
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -497,7 +498,7 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
 }
 
 void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                           const TextRole titleRole, const TextRole subtitleRole) const {
+                           const TextRole titleRole, const TextRole subtitleRole, const char* leadingLabel) const {
   // Hide last battery draw
   constexpr int maxBatteryWidth = 80;
   renderer.fillRect(rect.x + rect.width - maxBatteryWidth, rect.y + 5, maxBatteryWidth,
@@ -511,8 +512,14 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
                    Rect{batteryX, rect.y + 5, BaseMetrics::values.batteryWidth, BaseMetrics::values.batteryHeight},
                    showBatteryPercentage);
 
+  if (leadingLabel != nullptr && leadingLabel[0] != '\0') {
+    renderer.drawText(SMALL_FONT_ID, rect.x + BaseMetrics::values.contentSidePadding, rect.y + 5, leadingLabel);
+  }
+
   if (title) {
-    const int titleAreaX = rect.x + BaseMetrics::values.contentSidePadding;
+    const int leadingWidth =
+        (leadingLabel != nullptr && leadingLabel[0] != '\0') ? renderer.getTextWidth(SMALL_FONT_ID, leadingLabel) + 12 : 0;
+    const int titleAreaX = rect.x + BaseMetrics::values.contentSidePadding + leadingWidth;
     const int titleAreaRight = batteryX - 12;
     const int titleAreaWidth = std::max(0, titleAreaRight - titleAreaX);
     auto truncatedTitle =
@@ -893,6 +900,12 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
   renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
                                    &orientedMarginLeft);
+  const bool showClock =
+      halClock.isAvailable() &&
+      SETTINGS.statusBarClock != CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE;
+  const bool hasStatusTextLine =
+      SETTINGS.statusBarBookProgressPercentage || SETTINGS.statusBarChapterPageCount || SETTINGS.statusBarBattery ||
+      showClock || !title.empty();
 
   // Draw Progress Text
   const auto screenHeight = renderer.getScreenHeight();
@@ -905,7 +918,10 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     renderer.fillRect(0, clearTop, renderer.getScreenWidth(), screenHeight - clearTop, false);
   }
   auto textY = screenHeight - statusBarHeight - orientedMarginBottom - paddingBottom - 4;
-  int progressTextWidth = 0;
+  const int leftClusterX = metrics.statusBarHorizontalMargin + orientedMarginLeft + 1;
+  const int rightClusterX = renderer.getScreenWidth() - metrics.statusBarHorizontalMargin - orientedMarginRight;
+  int leftClusterWidth = 0;
+  int rightClusterWidth = 0;
 
   if (SETTINGS.statusBarBookProgressPercentage || SETTINGS.statusBarChapterPageCount) {
     // Right aligned text for progress counter
@@ -919,11 +935,9 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
       snprintf(progressStr, sizeof(progressStr), "%d/%d", currentPage, pageCount);
     }
 
-    progressTextWidth = renderer.getTextWidth(SMALL_FONT_ID, progressStr);
-    renderer.drawText(
-        SMALL_FONT_ID,
-        renderer.getScreenWidth() - metrics.statusBarHorizontalMargin - orientedMarginRight - progressTextWidth, textY,
-        progressStr);
+    const int progressTextWidth = renderer.getTextWidth(SMALL_FONT_ID, progressStr);
+    renderer.drawText(SMALL_FONT_ID, rightClusterX - progressTextWidth, textY, progressStr);
+    rightClusterWidth += progressTextWidth;
   }
 
   // Draw Progress Bar
@@ -947,70 +961,73 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   const bool showBatteryPercentage =
       SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_NEVER;
   if (SETTINGS.statusBarBattery) {
+    const uint16_t percentage = powerManager.getBatteryPercentage();
     GUI.drawBatteryLeft(renderer,
-                        Rect{metrics.statusBarHorizontalMargin + orientedMarginLeft + 1, textY, metrics.batteryWidth,
-                             metrics.batteryHeight},
+                        Rect{leftClusterX + leftClusterWidth, textY, metrics.batteryWidth, metrics.batteryHeight},
                         showBatteryPercentage);
+    leftClusterWidth += metrics.batteryWidth;
+    if (showBatteryPercentage) {
+      leftClusterWidth += batteryPercentSpacing +
+                          renderer.getTextWidth(SMALL_FONT_ID, (std::to_string(percentage) + "%").c_str());
+    }
+  }
+
+  if (showClock) {
+    char timeBuf[6] = {};
+    if (halClock.formatTime(timeBuf, sizeof(timeBuf))) {
+      const int clockTextWidth = renderer.getTextWidth(SMALL_FONT_ID, timeBuf);
+      if (SETTINGS.statusBarClock == CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_LEFT) {
+        const int gap = leftClusterWidth > 0 ? 10 : 0;
+        renderer.drawText(SMALL_FONT_ID, leftClusterX + leftClusterWidth + gap, textY, timeBuf);
+        leftClusterWidth += gap + clockTextWidth;
+      } else {
+        const int gap = rightClusterWidth > 0 ? 10 : 0;
+        renderer.drawText(SMALL_FONT_ID, rightClusterX - rightClusterWidth - gap - clockTextWidth, textY, timeBuf);
+        rightClusterWidth += gap + clockTextWidth;
+      }
+    }
+  }
+
+  if (isBookmarked && hasStatusTextLine) {
+    constexpr int bookmarkWidth = 10;
+    constexpr int bookmarkHeight = 14;
+    const int gap = leftClusterWidth > 0 ? 6 : 0;
+    const int iconX = leftClusterX + leftClusterWidth + gap;
+    const int iconY = textY + 2;
+    const int notchDepth = bookmarkHeight / 3;
+    const int centerX = iconX + bookmarkWidth / 2;
+    const int xPoints[5] = {iconX, iconX + bookmarkWidth, iconX + bookmarkWidth, centerX, iconX};
+    const int yPoints[5] = {iconY, iconY, iconY + bookmarkHeight, iconY + bookmarkHeight - notchDepth,
+                            iconY + bookmarkHeight};
+    renderer.fillPolygon(xPoints, yPoints, 5, true);
+    leftClusterWidth += gap + bookmarkWidth;
   }
 
   // Draw Title
-  const bool hasStatusTextLine =
-      SETTINGS.statusBarBookProgressPercentage || SETTINGS.statusBarChapterPageCount || SETTINGS.statusBarBattery ||
-      !title.empty();
-  if (!title.empty() || (isBookmarked && hasStatusTextLine)) {
+  if (!title.empty()) {
     textY -= textYOffset;
-    // Centered chapter title text
-    // Page width minus existing content with 30px padding on each side
-    const int rendererableScreenWidth =
+    const int renderableScreenWidth =
         renderer.getScreenWidth() - (metrics.statusBarHorizontalMargin * 2) - orientedMarginLeft - orientedMarginRight;
+    const int titleMarginLeft = leftClusterWidth + 30;
+    const int titleMarginRight = rightClusterWidth + 30;
 
-    const int batterySize = SETTINGS.statusBarBattery ? (showBatteryPercentage ? 50 : 20) : 0;
-    const int titleMarginLeft = batterySize + 30;
-    const int titleMarginRight = progressTextWidth + 30;
-    const int bookmarkWidth = 10;
-    const int bookmarkHeight = 14;
-    const int bookmarkSpacing = (!title.empty() && isBookmarked) ? 6 : 0;
-
-    // Attempt to center title on the screen, but if title is too wide then later we will center it within the
-    // available space.
     int titleMarginLeftAdjusted = std::max(titleMarginLeft, titleMarginRight);
-    int availableTitleSpace = rendererableScreenWidth - 2 * titleMarginLeftAdjusted;
+    int availableTitleSpace = renderableScreenWidth - 2 * titleMarginLeftAdjusted;
 
     int titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
-    int bookmarkReservedWidth = isBookmarked ? (bookmarkWidth + bookmarkSpacing) : 0;
-    if (bookmarkReservedWidth > availableTitleSpace) {
-      bookmarkReservedWidth = bookmarkWidth;
-    }
-
-    if (titleWidth + bookmarkReservedWidth > availableTitleSpace) {
-      // Not enough space to center on the screen, center it within the remaining space instead
-      availableTitleSpace = rendererableScreenWidth - titleMarginLeft - titleMarginRight;
+    if (titleWidth > availableTitleSpace) {
+      availableTitleSpace = renderableScreenWidth - titleMarginLeft - titleMarginRight;
       titleMarginLeftAdjusted = titleMarginLeft;
     }
-    if (titleWidth + bookmarkReservedWidth > availableTitleSpace) {
-      const int maxTitleWidth = std::max(0, availableTitleSpace - bookmarkReservedWidth);
+    if (titleWidth > availableTitleSpace) {
+      const int maxTitleWidth = std::max(0, availableTitleSpace);
       title = truncatedTextForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str(), maxTitleWidth);
       titleWidth = getTextWidthForRole(renderer, SMALL_FONT_ID, titleRole, title.c_str());
     }
 
-    const int contentWidth = titleWidth + (isBookmarked ? bookmarkWidth + ((!title.empty()) ? bookmarkSpacing : 0) : 0);
     const int contentX = titleMarginLeftAdjusted + metrics.statusBarHorizontalMargin + orientedMarginLeft +
-                         (availableTitleSpace - contentWidth) / 2;
-
-    if (isBookmarked) {
-      const int iconX = contentX;
-      const int iconY = textY + 2;
-      const int notchDepth = bookmarkHeight / 3;
-      const int centerX = iconX + bookmarkWidth / 2;
-      const int xPoints[5] = {iconX, iconX + bookmarkWidth, iconX + bookmarkWidth, centerX, iconX};
-      const int yPoints[5] = {iconY, iconY, iconY + bookmarkHeight, iconY + bookmarkHeight - notchDepth,
-                              iconY + bookmarkHeight};
-      renderer.fillPolygon(xPoints, yPoints, 5, true);
-    }
-
-    if (!title.empty()) {
-      drawTextForRole(renderer, SMALL_FONT_ID, titleRole, contentX + bookmarkReservedWidth, textY, title.c_str());
-    }
+                         (availableTitleSpace - titleWidth) / 2;
+    drawTextForRole(renderer, SMALL_FONT_ID, titleRole, contentX, textY, title.c_str());
   }
 }
 

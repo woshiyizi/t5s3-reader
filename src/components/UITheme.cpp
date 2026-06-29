@@ -2,6 +2,7 @@
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <Logging.h>
 
 #include <algorithm>
@@ -104,7 +105,9 @@ int UITheme::getStatusBarHeight() {
   // Add status bar margin
   const bool showStatusBar = SETTINGS.statusBarChapterPageCount || SETTINGS.statusBarBookProgressPercentage ||
                              SETTINGS.statusBarTitle != CrossPointSettings::STATUS_BAR_TITLE::HIDE_TITLE ||
-                             SETTINGS.statusBarBattery;
+                             SETTINGS.statusBarBattery ||
+                             (SETTINGS.statusBarClock != CrossPointSettings::STATUS_BAR_CLOCK_MODE::STATUS_BAR_CLOCK_HIDE &&
+                              halClock.isAvailable());
   const bool showProgressBar =
       SETTINGS.statusBarProgressBar != CrossPointSettings::STATUS_BAR_PROGRESS_BAR::HIDE_PROGRESS;
   const int statusTextHeight = showStatusBar ? std::max(metrics.statusBarVerticalMargin, kStatusBarTextHeight) : 0;
