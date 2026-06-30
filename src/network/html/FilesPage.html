@@ -1823,6 +1823,8 @@
   }
 
   async function hydrate() {
+    syncDeviceClockIfNeeded();
+
     // Fetch CrossPoint version and upload transport hints
     await fetchVersion();
 
@@ -3011,6 +3013,28 @@ const exportLogCheckbox = document.getElementById('export-log-checkbox');
 
 // CrossPoint status (fetched from API)
 let crosspointVersion = 'Unknown';
+
+async function syncDeviceClockIfNeeded() {
+  try {
+    const now = Date.now();
+    const key = 'crosspointClockSyncAt';
+    const lastSync = parseInt(localStorage.getItem(key) || '0', 10);
+    if (Number.isFinite(lastSync) && (now - lastSync) < 5 * 60 * 1000) {
+      return;
+    }
+
+    const response = await fetch('/api/clock/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ epochMs: now })
+    });
+    if (response.ok) {
+      localStorage.setItem(key, String(now));
+    }
+  } catch (e) {
+    console.debug('Clock sync skipped:', e);
+  }
+}
 
 // Fetch version and network mode from API
 async function fetchVersion() {

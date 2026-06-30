@@ -312,6 +312,28 @@
   let allSettings = [];
   let originalValues = {};
 
+  async function syncDeviceClockIfNeeded() {
+    try {
+      const now = Date.now();
+      const key = 'crosspointClockSyncAt';
+      const lastSync = parseInt(localStorage.getItem(key) || '0', 10);
+      if (Number.isFinite(lastSync) && (now - lastSync) < 5 * 60 * 1000) {
+        return;
+      }
+
+      const response = await fetch('/api/clock/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ epochMs: now })
+      });
+      if (response.ok) {
+        localStorage.setItem(key, String(now));
+      }
+    } catch (error) {
+      console.debug('Clock sync skipped:', error);
+    }
+  }
+
   function escapeHtml(unsafe) {
     return unsafe
       .replaceAll("&", "&amp;")
@@ -479,6 +501,7 @@
     btn.textContent = 'Save Settings';
   }
 
+  syncDeviceClockIfNeeded();
   loadSettings();
 
   // --- OPDS Server Management ---

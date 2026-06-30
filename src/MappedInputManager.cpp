@@ -16,6 +16,32 @@ constexpr SideLayoutMap kSideLayouts[] = {
     {HalGPIO::BTN_UP, HalGPIO::BTN_DOWN},
     {HalGPIO::BTN_DOWN, HalGPIO::BTN_UP},
 };
+
+MappedInputManager::TouchPoint orientTouchPoint(const HalGPIO::TouchPoint& raw, const GfxRenderer& renderer) {
+  MappedInputManager::TouchPoint point{};
+
+  switch (renderer.getOrientation()) {
+    case GfxRenderer::Orientation::Portrait:
+      point = {static_cast<int16_t>(raw.x), static_cast<int16_t>(raw.y)};
+      break;
+    case GfxRenderer::Orientation::LandscapeClockwise:
+      point = {static_cast<int16_t>(renderer.getScreenWidth() - 1 - raw.y), static_cast<int16_t>(raw.x)};
+      break;
+    case GfxRenderer::Orientation::PortraitInverted:
+      point = {static_cast<int16_t>(renderer.getScreenWidth() - 1 - raw.x),
+               static_cast<int16_t>(renderer.getScreenHeight() - 1 - raw.y)};
+      break;
+    case GfxRenderer::Orientation::LandscapeCounterClockwise:
+      point = {static_cast<int16_t>(raw.y), static_cast<int16_t>(renderer.getScreenHeight() - 1 - raw.x)};
+      break;
+  }
+
+  if (point.x < 0) point.x = 0;
+  if (point.y < 0) point.y = 0;
+  if (point.x >= renderer.getScreenWidth()) point.x = renderer.getScreenWidth() - 1;
+  if (point.y >= renderer.getScreenHeight()) point.y = renderer.getScreenHeight() - 1;
+  return point;
+}
 }  // namespace
 
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
@@ -82,26 +108,17 @@ bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& re
     return false;
   }
 
-  switch (renderer.getOrientation()) {
-    case GfxRenderer::Orientation::Portrait:
-      point = {static_cast<int16_t>(raw.x), static_cast<int16_t>(raw.y)};
-      break;
-    case GfxRenderer::Orientation::LandscapeClockwise:
-      point = {static_cast<int16_t>(renderer.getScreenWidth() - 1 - raw.y), static_cast<int16_t>(raw.x)};
-      break;
-    case GfxRenderer::Orientation::PortraitInverted:
-      point = {static_cast<int16_t>(renderer.getScreenWidth() - 1 - raw.x),
-               static_cast<int16_t>(renderer.getScreenHeight() - 1 - raw.y)};
-      break;
-    case GfxRenderer::Orientation::LandscapeCounterClockwise:
-      point = {static_cast<int16_t>(raw.y), static_cast<int16_t>(renderer.getScreenHeight() - 1 - raw.x)};
-      break;
+  point = orientTouchPoint(raw, renderer);
+  return true;
+}
+
+bool MappedInputManager::getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const {
+  HalGPIO::TouchPoint raw;
+  if (!gpio.getTouchHold(raw, heldMs)) {
+    return false;
   }
 
-  if (point.x < 0) point.x = 0;
-  if (point.y < 0) point.y = 0;
-  if (point.x >= renderer.getScreenWidth()) point.x = renderer.getScreenWidth() - 1;
-  if (point.y >= renderer.getScreenHeight()) point.y = renderer.getScreenHeight() - 1;
+  point = orientTouchPoint(raw, renderer);
   return true;
 }
 

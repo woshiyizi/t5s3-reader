@@ -146,7 +146,7 @@ class BaseTheme {
                         bool highlightValue = false, TextRole textRole = TextRole::System) const;
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title,
                           const char* subtitle = nullptr, TextRole titleRole = TextRole::System,
-                          TextRole subtitleRole = TextRole::System) const;
+                          TextRole subtitleRole = TextRole::System, const char* leadingLabel = nullptr) const;
   virtual void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                              const char* rightLabel = nullptr) const;
   virtual void drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,
@@ -161,7 +161,8 @@ class BaseTheme {
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   virtual void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                              const int pageCount, std::string title, const int paddingBottom = 0,
-                             const int textYOffset = 0, TextRole titleRole = TextRole::System) const;
+                             const int textYOffset = 0, TextRole titleRole = TextRole::System,
+                             bool isBookmarked = false) const;
   virtual void drawHelpText(const GfxRenderer& renderer, Rect rect, const char* label) const;
   virtual void drawTextField(const GfxRenderer& renderer, Rect rect, const int textWidth, bool cursorMode = false,
                              int contentStartX = 0, int contentWidth = 0) const;

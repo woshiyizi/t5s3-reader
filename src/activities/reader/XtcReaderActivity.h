@@ -22,6 +22,7 @@ class XtcReaderActivity final : public Activity {
   void renderPage();
   void saveProgress() const;
   void loadProgress();
+  void maybeAutoRemoveFromRecents() const;
 
  public:
   explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Xtc> xtc,

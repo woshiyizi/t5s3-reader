@@ -112,7 +112,7 @@ void TxtReaderActivity::loop() {
       ReaderUtils::requestPageTurnEffect(renderer, true);
       requestUpdate();
     } else {
-      onGoHome();
+      finishReadingAndGoHome();
     }
   }
 }
@@ -140,12 +140,19 @@ bool TxtReaderActivity::onTouchTap(int16_t x, int16_t) {
       ReaderUtils::requestPageTurnEffect(renderer, true);
       requestUpdate();
     } else {
-      onGoHome();
+      finishReadingAndGoHome();
     }
     return true;
   }
 
   return false;
+}
+
+void TxtReaderActivity::finishReadingAndGoHome() {
+  if (SETTINGS.autoRemoveFinishedRecentBooks && txt) {
+    RECENT_BOOKS.removeBook(txt->getPath());
+  }
+  onGoHome();
 }
 
 void TxtReaderActivity::initializeReader() {

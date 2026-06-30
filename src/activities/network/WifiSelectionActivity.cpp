@@ -8,6 +8,7 @@
 #include <map>
 
 #include "MappedInputManager.h"
+#include "ClockSync.h"
 #include "WifiCredentialStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -849,6 +850,13 @@ void WifiSelectionActivity::renderForgetPrompt() const {
 }
 
 void WifiSelectionActivity::onComplete(const bool connected) {
+  if (connected) {
+    // Opportunistically refresh system time whenever the user successfully
+    // joins WiFi. This keeps RTC drift bounded without adding a separate
+    // "sync clock" workflow to the UI.
+    (void)ClockSync::syncWithNtp(8000, false);
+  }
+
   ActivityResult result;
   result.isCancelled = !connected;
   if (connected) {

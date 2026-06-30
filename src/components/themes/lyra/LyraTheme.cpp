@@ -139,7 +139,7 @@ void LyraTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const b
 }
 
 void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                           const TextRole titleRole, const TextRole subtitleRole) const {
+                           const TextRole titleRole, const TextRole subtitleRole, const char* leadingLabel) const {
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
 
   const bool showBatteryPercentage =
@@ -149,6 +149,10 @@ void LyraTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   drawBatteryRight(renderer,
                    Rect{batteryX, rect.y + 5, LyraMetrics::values.batteryWidth, LyraMetrics::values.batteryHeight},
                    showBatteryPercentage);
+
+  if (leadingLabel != nullptr && leadingLabel[0] != '\0') {
+    renderer.drawText(SMALL_FONT_ID, rect.x + LyraMetrics::values.contentSidePadding, rect.y + 5, leadingLabel);
+  }
 
   int maxTitleWidth =
       title != nullptr ? getTextWidthForRole(renderer, UI_12_FONT_ID, titleRole, title, EpdFontFamily::BOLD) : 0;

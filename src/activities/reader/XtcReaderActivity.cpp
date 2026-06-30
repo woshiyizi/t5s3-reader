@@ -88,6 +88,7 @@ void XtcReaderActivity::loop() {
   // At end of the book, forward button goes home and back button returns to last page
   if (currentPage >= xtc->getPageCount()) {
     if (nextTriggered) {
+      maybeAutoRemoveFromRecents();
       onGoHome();
     } else {
       currentPage = xtc->getPageCount() - 1;
@@ -112,6 +113,7 @@ void XtcReaderActivity::loop() {
     currentPage += skipAmount;
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();  // Allow showing "End of book"
+      maybeAutoRemoveFromRecents();
     }
     ReaderUtils::requestPageTurnEffect(renderer, true);
     requestUpdate();
@@ -138,9 +140,15 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
     if (ReaderUtils::isPageTurnInputBlocked()) {
       return true;
     }
+    if (currentPage >= xtc->getPageCount()) {
+      maybeAutoRemoveFromRecents();
+      onGoHome();
+      return true;
+    }
     currentPage++;
     if (currentPage >= xtc->getPageCount()) {
       currentPage = xtc->getPageCount();
+      maybeAutoRemoveFromRecents();
     }
     ReaderUtils::requestPageTurnEffect(renderer, true);
     requestUpdate();
@@ -149,6 +157,12 @@ bool XtcReaderActivity::onTouchTap(int16_t x, int16_t) {
 
   openChapterSelection();
   return true;
+}
+
+void XtcReaderActivity::maybeAutoRemoveFromRecents() const {
+  if (SETTINGS.autoRemoveFinishedRecentBooks && xtc) {
+    RECENT_BOOKS.removeBook(xtc->getPath());
+  }
 }
 
 void XtcReaderActivity::openChapterSelection() {

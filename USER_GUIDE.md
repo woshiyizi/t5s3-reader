@@ -27,6 +27,7 @@ Welcome to the **CrossPoint** firmware. This guide outlines the hardware control
     - [Page Turning](#page-turning)
     - [Chapter Navigation](#chapter-navigation)
     - [System Navigation](#system-navigation)
+    - [Bookmarks](#bookmarks)
     - [Supported Languages](#supported-languages)
   - [5. Chapter Selection Screen](#5-chapter-selection-screen)
   - [6. Current Limitations \& Roadmap](#6-current-limitations--roadmap)
@@ -185,10 +186,15 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Remap Front Buttons**: A menu for customising the function of each bottom edge button.
 - **Side Button Layout (reader)**: Swap the order of the up and down volume buttons from "Prev/Next" (default) to "Next/Prev". This change is only in effect when reading.
+- **Long-press Menu**: Choose what holding **Confirm** does while reading an EPUB:
+  - "KOReader Sync" - Hold **Confirm** to start KOReader progress sync
+  - "Disabled" (default) - Long-press **Confirm** does nothing
+  - "Bookmark" - Hold **Confirm** to toggle a bookmark for the current page
 
-- **Long-press Chapter Skip**: Set whether long-pressing page turn buttons skips to the next/previous chapter:
-  - "Chapter Skip" (default) - Long-pressing skips to next/previous chapter
-  - "Page Scroll" - Long-pressing scrolls a page up/down
+- **Long-press button behavior**: Set what holding the page-turn buttons does while reading:
+  - "OFF" (default) - Long-pressing page-turn buttons behaves like a normal page turn
+  - "Chapter Skip" - Long-pressing skips to the next/previous chapter
+  - "Orientation Change" - Long-pressing rotates the reading orientation
 - **Short Power Button Click**: Controls the effect of a short click of the power button:
   - "Ignore" (default) - Require a long press to turn off the device
   - "Sleep" - A short press puts the device into sleep mode
@@ -394,7 +400,13 @@ This feature can be disabled in the **[Controls Settings](#363-controls)** to he
 ### System Navigation
 * **Return to Home:** Press the **Back** button to close the book and return to the **[Home](#31-home-screen)** screen.
 * **Return to Browse Files:** Press and hold the **Back** button to close the book and return to the **[Browse Files](#33-browse-files-screen)** screen.
-* **Chapter Menu:** Press **Confirm** to open the **[Table of Contents/Chapter Selection](#5-chapter-selection-screen)** screen.
+* **Reader Menu:** Press **Confirm** to open the reader menu, which includes chapter navigation, bookmark actions, sync, screenshot, and more.
+
+### Bookmarks
+* **Toggle Bookmark:** Open the reader menu with **Confirm** and select **Toggle Bookmark** to add or remove a bookmark for the current page.
+* **Open Bookmarks:** If the current book has bookmarks, the reader menu also shows a **Bookmarks** entry. Open it to jump to a saved location.
+* **Long-press Shortcut:** You can bind **Bookmark** to **Settings -> Controls -> Long-press Menu** and then hold **Confirm** to toggle the current-page bookmark.
+* **Status Bar Indicator:** When the current EPUB page is bookmarked and the status bar has a text row visible, a small bookmark marker appears in the reader status bar.
 
 ### Supported Languages
 

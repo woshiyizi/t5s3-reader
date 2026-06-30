@@ -5,6 +5,7 @@
 
 #include <optional>
 
+#include "BookmarkEntry.h"
 #include "EpubReaderMenuActivity.h"
 #include "activities/Activity.h"
 
@@ -33,6 +34,11 @@ class EpubReaderActivity final : public Activity {
   bool pendingScreenshot = false;
   bool skipNextButtonCheck = false;  // Skip button processing for one frame after subactivity exit
   bool automaticPageTurnActive = false;
+  bool showBookmarkMessage = false;
+  bool ignoreNextConfirmRelease = false;
+  bool bookmarkRemoved = false;
+  std::vector<BookmarkEntry> cachedBookmarks;
+  unsigned long bookmarkMessageTime = 0UL;
 
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
@@ -53,10 +59,15 @@ class EpubReaderActivity final : public Activity {
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
+  bool launchKOReaderSync();
   void openReaderMenu();
   void applyOrientation(uint8_t orientation);
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void pageTurn(bool isForwardTurn);
+  void loadCachedBookmarks();
+  bool isCurrentPageBookmarked() const;
+  void addBookmark();
+  void maybeAutoRemoveFromRecents() const;
 
   // Footnote navigation
   void navigateToHref(const std::string& href, bool savePosition = false);

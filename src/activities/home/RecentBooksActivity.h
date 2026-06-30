@@ -18,9 +18,15 @@ class RecentBooksActivity final : public Activity {
   // Recent tab state
   std::vector<RecentBook> recentBooks;
   std::string lastVisibleTextPrewarmKey;
+  int confirmingDelete = 0;
+  bool touchDeleteTriggered = false;
+  bool ignoreNextTouchTap = false;
 
   // Data loading
   void loadRecentBooks();
+  int getPageItems() const;
+  int getTouchedRecentBookIndex(int16_t y) const;
+  void removeSelectedRecentBook();
 
  public:
   explicit RecentBooksActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

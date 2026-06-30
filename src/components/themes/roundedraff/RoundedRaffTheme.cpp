@@ -98,11 +98,11 @@ std::string sanitizeButtonLabel(std::string label) {
 int coverWidth = 0;
 
 void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                                  const TextRole titleRole, const TextRole subtitleRole) const {
+                                  const TextRole titleRole, const TextRole subtitleRole,
+                                  const char* leadingLabel) const {
   (void)subtitle;
   (void)subtitleRole;
-  // Home screen header is custom-rendered in drawRecentBookCover.
-  if (title == nullptr) {
+  if (title == nullptr && (leadingLabel == nullptr || leadingLabel[0] == '\0')) {
     return;
   }
   const int sidePadding = RoundedRaffMetrics::values.contentSidePadding;
@@ -126,10 +126,18 @@ void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const 
     renderer.fillRect(batteryIconX - maxTextWidth - batteryPercentSpacing, rect.y + 14, clearW, clearH, false);
   }
 
-  const int maxTextWidth = std::max(0, batteryGroupLeftX - 20 - titleX);
-  auto headerTitle = truncatedTextForRole(renderer, kTitleFontId, titleRole, title, maxTextWidth, EpdFontFamily::BOLD);
-  drawTextForRole(renderer, kTitleFontId, titleRole, titleX, titleY, headerTitle.c_str(), true,
-                  EpdFontFamily::BOLD);
+  if (leadingLabel != nullptr && leadingLabel[0] != '\0') {
+    renderer.drawText(SMALL_FONT_ID, titleX, rect.y + 2, leadingLabel);
+  }
+
+  if (title != nullptr) {
+    const int maxTextWidth = std::max(0, batteryGroupLeftX - 20 - titleX);
+    auto headerTitle =
+        truncatedTextForRole(renderer, kTitleFontId, titleRole, title, maxTextWidth, EpdFontFamily::BOLD);
+    drawTextForRole(renderer, kTitleFontId, titleRole, titleX, titleY, headerTitle.c_str(), true,
+                    EpdFontFamily::BOLD);
+  }
+
   drawBatteryRightStable(renderer,
                          Rect{batteryIconX, rect.y + 14, RoundedRaffMetrics::values.batteryWidth,
                               RoundedRaffMetrics::values.batteryHeight},

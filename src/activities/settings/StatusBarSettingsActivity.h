@@ -22,6 +22,7 @@ class StatusBarSettingsActivity final : public Activity {
   ButtonNavigator buttonNavigator;
 
   int selectedIndex = 0;
+  int visibleItemCount = 0;
 
   void handleSelection();
 };

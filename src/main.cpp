@@ -5,6 +5,7 @@
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalClock.h>
 #include <HalGPIO.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
@@ -325,6 +326,7 @@ void setup() {
   HalSystem::begin();
   gpio.begin();
   powerManager.begin();
+  halClock.begin();
   halTiltSensor.begin();
 
 #ifdef ENABLE_SERIAL_LOG
@@ -350,6 +352,20 @@ void setup() {
   HalSystem::checkPanic();
 
   SETTINGS.loadFromFile();
+  LOG_DBG("MAIN", "Clock settings: tz=%u rtcStoresUtc=%u rtcVariantHint=%u rtcReferenceEpoch=%lu",
+          static_cast<unsigned>(SETTINGS.timeZone), static_cast<unsigned>(SETTINGS.rtcStoresUtc),
+          static_cast<unsigned>(SETTINGS.rtcVariantHint), static_cast<unsigned long>(SETTINGS.rtcReferenceEpoch));
+  halClock.configure(SETTINGS.timeZone, SETTINGS.rtcStoresUtc != 0, SETTINGS.rtcVariantHint, SETTINGS.rtcReferenceEpoch);
+  if (!halClock.syncSystemTimeFromRtc()) {
+    LOG_DBG("MAIN", "RTC time unavailable or invalid at boot");
+  } else if (SETTINGS.rtcStoresUtc != static_cast<uint8_t>(halClock.getRtcStoresUtc())) {
+    SETTINGS.rtcStoresUtc = halClock.getRtcStoresUtc() ? 1 : 0;
+    if (SETTINGS.saveToFile()) {
+      LOG_DBG("MAIN", "Updated RTC storage mode setting after boot auto-correction");
+    } else {
+      LOG_ERR("MAIN", "Failed to persist RTC storage mode auto-correction");
+    }
+  }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();

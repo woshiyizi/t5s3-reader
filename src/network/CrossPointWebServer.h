@@ -116,6 +116,7 @@ class CrossPointWebServer {
   void handleSettingsPage() const;
   void handleGetSettings() const;
   void handlePostSettings();
+  void handleClockSync();
 
   // Font management handlers
   void handleFontsPage() const;

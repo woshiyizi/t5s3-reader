@@ -24,6 +24,8 @@ class HalGPIO {
   bool touchActive = false;
   uint16_t touchStartX = 0;
   uint16_t touchStartY = 0;
+  unsigned long touchStartTime = 0;
+  TouchPoint currentTouchPoint;
   unsigned long lastTouchSeenTime = 0;
   bool touchMoved = false;
   bool touchTapEvent = false;
@@ -59,6 +61,7 @@ class HalGPIO {
   bool hadTouchActivity() const;
   unsigned long getHeldTime() const;
   bool getTouchTap(TouchPoint& point) const;
+  bool getTouchHold(TouchPoint& point, unsigned long& heldMs) const;
   bool wasTouchHomeButtonPressed() const;
 
   void startDeepSleep(bool wakeOnTouch = true);
