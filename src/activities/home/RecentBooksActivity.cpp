@@ -13,7 +13,11 @@
 #include "fontIds.h"
 
 namespace {
-constexpr unsigned long GO_HOME_MS = 1000;
+constexpr int ENTER_DELETE_MODE_MS = 700;
+constexpr int DELETE_MODE_OFF = 0;
+constexpr int DELETE_MODE_DISPLAY = 1;
+constexpr int DELETE_MODE_CONFIRM = 2;
+constexpr int RECENT_HELP_TEXT_HEIGHT = 36;
 constexpr char UTF8_ELLIPSIS[] = "\xE2\x80\xA6";
 
 void appendTextKey(std::string& key, const std::string& text) {
@@ -32,13 +36,53 @@ void recordUserContentText(FontCacheManager* fcm, const int systemFontId, const 
 }
 }  // namespace
 
+int RecentBooksActivity::getPageItems() const {
+  const auto pageHeight = renderer.getScreenHeight();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int helpTextHeight =
+      (recentBooks.empty() || confirmingDelete >= DELETE_MODE_DISPLAY) ? 0 : RECENT_HELP_TEXT_HEIGHT;
+  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - helpTextHeight;
+  return std::max(1, contentHeight / std::max(1, metrics.listWithSubtitleRowHeight));
+}
+
+int RecentBooksActivity::getTouchedRecentBookIndex(const int16_t y) const {
+  if (recentBooks.empty()) {
+    return -1;
+  }
+
+  const auto pageHeight = renderer.getScreenHeight();
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
+  const int helpTextHeight =
+      (recentBooks.empty() || confirmingDelete >= DELETE_MODE_DISPLAY) ? 0 : RECENT_HELP_TEXT_HEIGHT;
+  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - helpTextHeight;
+  const int rowHeight = std::max(1, metrics.listWithSubtitleRowHeight);
+  if (y < contentTop || y >= contentTop + contentHeight) {
+    return -1;
+  }
+
+  const int pageItems = getPageItems();
+  const int row = (y - contentTop) / rowHeight;
+  if (row < 0 || row >= pageItems) {
+    return -1;
+  }
+
+  const size_t pageStartIndex = (selectorIndex / static_cast<size_t>(pageItems)) * static_cast<size_t>(pageItems);
+  const size_t touchedIndex = pageStartIndex + static_cast<size_t>(row);
+  if (touchedIndex >= recentBooks.size()) {
+    return -1;
+  }
+
+  return static_cast<int>(touchedIndex);
+}
+
 void RecentBooksActivity::loadRecentBooks() {
   recentBooks.clear();
   const auto& books = RECENT_BOOKS.getBooks();
   recentBooks.reserve(books.size());
 
   for (const auto& book : books) {
-    // Skip if file no longer exists
     if (!Storage.exists(book.path.c_str())) {
       continue;
     }
@@ -46,13 +90,32 @@ void RecentBooksActivity::loadRecentBooks() {
   }
 }
 
+void RecentBooksActivity::removeSelectedRecentBook() {
+  if (recentBooks.empty() || selectorIndex >= recentBooks.size()) {
+    return;
+  }
+
+  RECENT_BOOKS.removeBook(recentBooks[selectorIndex].path);
+  recentBooks.erase(recentBooks.begin() + static_cast<int>(selectorIndex));
+  if (selectorIndex >= recentBooks.size() && selectorIndex > 0) {
+    selectorIndex--;
+  }
+
+  confirmingDelete = DELETE_MODE_OFF;
+  touchDeleteTriggered = false;
+  ignoreNextTouchTap = false;
+  lastVisibleTextPrewarmKey.clear();
+  requestUpdate();
+}
+
 void RecentBooksActivity::onEnter() {
   Activity::onEnter();
 
-  // Load data
   loadRecentBooks();
-
   selectorIndex = 0;
+  confirmingDelete = DELETE_MODE_OFF;
+  touchDeleteTriggered = false;
+  ignoreNextTouchTap = false;
   lastVisibleTextPrewarmKey.clear();
   requestUpdate();
 }
@@ -60,14 +123,57 @@ void RecentBooksActivity::onEnter() {
 void RecentBooksActivity::onExit() {
   Activity::onExit();
   recentBooks.clear();
+  confirmingDelete = DELETE_MODE_OFF;
+  touchDeleteTriggered = false;
+  ignoreNextTouchTap = false;
   lastVisibleTextPrewarmKey.clear();
 }
 
 void RecentBooksActivity::loop() {
-  const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
+  MappedInputManager::TouchPoint touchPoint{};
+  unsigned long touchHeldMs = 0;
+  if (confirmingDelete == DELETE_MODE_OFF && mappedInput.getTouchHold(touchPoint, touchHeldMs, renderer)) {
+    const int touchedIndex = getTouchedRecentBookIndex(touchPoint.y);
+    if (touchedIndex >= 0) {
+      if (selectorIndex != static_cast<size_t>(touchedIndex)) {
+        selectorIndex = static_cast<size_t>(touchedIndex);
+        requestUpdate();
+      }
+
+      if (touchHeldMs >= ENTER_DELETE_MODE_MS && !touchDeleteTriggered) {
+        confirmingDelete = DELETE_MODE_DISPLAY;
+        touchDeleteTriggered = true;
+        ignoreNextTouchTap = true;
+        requestUpdate();
+        return;
+      }
+    }
+  } else {
+    touchDeleteTriggered = false;
+  }
+
+  if (confirmingDelete >= DELETE_MODE_DISPLAY) {
+    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+      if (confirmingDelete == DELETE_MODE_DISPLAY) {
+        confirmingDelete = DELETE_MODE_CONFIRM;
+        requestUpdate();
+      } else {
+        removeSelectedRecentBook();
+      }
+      return;
+    }
+
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      confirmingDelete = DELETE_MODE_OFF;
+      requestUpdate();
+      return;
+    }
+
+    return;
+  }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (!recentBooks.empty() && selectorIndex < static_cast<int>(recentBooks.size())) {
+    if (!recentBooks.empty() && selectorIndex < recentBooks.size()) {
       LOG_DBG("RBA", "Selected recent book: %s", recentBooks[selectorIndex].path.c_str());
       onSelectBook(recentBooks[selectorIndex].path);
       return;
@@ -76,9 +182,20 @@ void RecentBooksActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     onGoHome();
+    return;
   }
 
-  int listSize = static_cast<int>(recentBooks.size());
+  if (mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+      mappedInput.getHeldTime() > ENTER_DELETE_MODE_MS) {
+    if (!recentBooks.empty()) {
+      confirmingDelete = DELETE_MODE_DISPLAY;
+      requestUpdate();
+    }
+    return;
+  }
+
+  const int pageItems = getPageItems();
+  const int listSize = static_cast<int>(recentBooks.size());
 
   buttonNavigator.onNextRelease([this, listSize] {
     selectorIndex = ButtonNavigator::nextIndex(static_cast<int>(selectorIndex), listSize);
@@ -102,30 +219,36 @@ void RecentBooksActivity::loop() {
 }
 
 bool RecentBooksActivity::onTouchTap(int16_t, int16_t y) {
-  if (recentBooks.empty()) return false;
+  if (ignoreNextTouchTap) {
+    ignoreNextTouchTap = false;
+    return true;
+  }
 
-  const auto pageHeight = renderer.getScreenHeight();
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
-  const int rowHeight = metrics.listWithSubtitleRowHeight;
-  if (rowHeight <= 0 || y < contentTop || y >= contentTop + contentHeight) {
+  if (recentBooks.empty()) {
     return false;
   }
 
-  const int pageItems = std::max(1, contentHeight / rowHeight);
-  const int row = (y - contentTop) / rowHeight;
-  if (row < 0 || row >= pageItems) {
+  if (confirmingDelete >= DELETE_MODE_DISPLAY) {
+    const int rowHeight = std::max(1, UITheme::getInstance().getMetrics().listWithSubtitleRowHeight);
+    const int confirmRowY = renderer.getScreenHeight() / 2;
+    if (y >= confirmRowY && y < confirmRowY + rowHeight) {
+      if (confirmingDelete == DELETE_MODE_DISPLAY) {
+        confirmingDelete = DELETE_MODE_CONFIRM;
+        requestUpdate();
+      } else {
+        removeSelectedRecentBook();
+      }
+      return true;
+    }
     return false;
   }
 
-  const size_t pageStartIndex = (selectorIndex / pageItems) * pageItems;
-  const size_t touchedIndex = pageStartIndex + static_cast<size_t>(row);
-  if (touchedIndex >= recentBooks.size()) {
+  const int touchedIndex = getTouchedRecentBookIndex(y);
+  if (touchedIndex < 0) {
     return false;
   }
 
-  selectorIndex = touchedIndex;
+  selectorIndex = static_cast<size_t>(touchedIndex);
   LOG_DBG("RBA", "Touch selected recent book: %s", recentBooks[selectorIndex].path.c_str());
   onSelectBook(recentBooks[selectorIndex].path);
   return true;
@@ -141,8 +264,10 @@ void RecentBooksActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_MENU_RECENT_BOOKS));
 
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing;
-  const int pageItems = std::max(1, contentHeight / std::max(1, metrics.listWithSubtitleRowHeight));
+  const int helpTextHeight =
+      (recentBooks.empty() || confirmingDelete >= DELETE_MODE_DISPLAY) ? 0 : RECENT_HELP_TEXT_HEIGHT;
+  const int contentHeight = pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - helpTextHeight;
+  const int pageItems = getPageItems();
 
   std::string visibleTextKey;
   if (!recentBooks.empty()) {
@@ -171,19 +296,29 @@ void RecentBooksActivity::render(RenderLock&&) {
     lastVisibleTextPrewarmKey = visibleTextKey;
   }
 
-  // Recent tab
   if (recentBooks.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_RECENT_BOOKS));
+  } else if (confirmingDelete >= DELETE_MODE_DISPLAY) {
+    GUI.drawHelpText(renderer, Rect{0, pageHeight / 2 - RECENT_HELP_TEXT_HEIGHT, pageWidth, RECENT_HELP_TEXT_HEIGHT},
+                     tr(STR_CONFIRM_REMOVE_RECENT_BOOK));
+    GUI.drawList(renderer, Rect{0, pageHeight / 2, pageWidth, std::max(1, metrics.listWithSubtitleRowHeight)}, 1, 0,
+                 [this](int) { return recentBooks[selectorIndex].title; },
+                 [this](int) { return recentBooks[selectorIndex].author; },
+                 [this](int) { return UITheme::getFileIcon(recentBooks[selectorIndex].path); }, nullptr, false,
+                 TextRole::UserContent);
   } else {
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
         [this](int index) { return recentBooks[index].title; }, [this](int index) { return recentBooks[index].author; },
         [this](int index) { return UITheme::getFileIcon(recentBooks[index].path); }, nullptr, false,
         TextRole::UserContent);
+    GUI.drawHelpText(renderer, Rect{0, contentTop + contentHeight, pageWidth, helpTextHeight},
+                     tr(STR_HOLD_OPEN_TO_REMOVE));
   }
 
-  // Help text
-  const auto labels = mappedInput.mapLabels(tr(STR_HOME), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  const auto backLabel = confirmingDelete >= DELETE_MODE_DISPLAY ? tr(STR_CANCEL) : tr(STR_HOME);
+  const auto confirmLabel = recentBooks.empty() ? "" : (confirmingDelete >= DELETE_MODE_DISPLAY ? tr(STR_DELETE) : tr(STR_OPEN));
+  const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);

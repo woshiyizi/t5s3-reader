@@ -67,6 +67,7 @@ class EpubReaderActivity final : public Activity {
   void loadCachedBookmarks();
   bool isCurrentPageBookmarked() const;
   void addBookmark();
+  void maybeAutoRemoveFromRecents() const;
 
   // Footnote navigation
   void navigateToHref(const std::string& href, bool savePosition = false);

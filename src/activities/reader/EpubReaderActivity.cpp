@@ -677,6 +677,7 @@ void EpubReaderActivity::pageTurn(bool isForwardTurn) {
         currentSpineIndex++;
         section.reset();
       }
+      maybeAutoRemoveFromRecents();
     }
   } else {
     if (section->currentPage > 0) {
@@ -1200,6 +1201,12 @@ bool EpubReaderActivity::isCurrentPageBookmarked() const {
   return std::any_of(cachedBookmarks.begin(), cachedBookmarks.end(), [&](const BookmarkEntry& bookmark) {
     return bookmarkMatchesProgress(bookmark, currentSpineIndex, currentPage, pageCount, pageRange);
   });
+}
+
+void EpubReaderActivity::maybeAutoRemoveFromRecents() const {
+  if (SETTINGS.autoRemoveFinishedRecentBooks && epub) {
+    RECENT_BOOKS.removeBook(epub->getPath());
+  }
 }
 
 void EpubReaderActivity::addBookmark() {
